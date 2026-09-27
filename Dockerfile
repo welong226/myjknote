@@ -24,6 +24,12 @@ server {
     location = /favicon.ico { access_log off; log_not_found off; }
     location = /robots.txt  { access_log off; log_not_found off; }
 
+    # Images / static under Bank — never rewrite to index.php
+    location ^~ /Bank/ {
+        try_files $uri =404;
+        access_log off;
+    }
+
     location ~ \.php$ {
         try_files $uri =404;
         fastcgi_split_path_info ^(.+\.php)(/.*)$;
@@ -37,7 +43,7 @@ server {
     }
 
     location / {
-        try_files $uri $uri/ /index.php$is_args$args;
+        try_files $uri $uri/ =404;
     }
 
     location ~ /\.(?!well-known).* {

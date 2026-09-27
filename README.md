@@ -3,25 +3,18 @@
 Personal shortcut pages + PHP APIs on Zeabur.
 
 - Site: https://myjknote.zeabur.app
-- PocketBase: https://pocktbase.zeabur.app
 
-## Pages (index)
+## Pages
 
-| Link | File |
-|------|------|
-| link | `link.htm` |
-| FB | `FB.htm` |
-| shopping | `shopping.htm` |
-| Invest | `Invest.htm` |
-| Book | `Book.htm` |
-| Ukulele | `Ukulele.html` |
-| JCBcount | `CardManager.html` → `card_api.php` |
-| BankQRcode | `Bank.html` |
-| BankUsage | `BankManager.html` → `bank_api.php` |
-| Calendar | `shift-calendar.html` → `api.php` |
+link / FB / shopping / Invest / Book / Ukulele / JCBcount / BankQRcode / BankUsage / Calendar
 
-Writable data lives under `data/` (mount `/var/www/data` on Zeabur).
+## Data
 
-## Deploy
+- Runtime writable: `/var/www/data`（Zeabur Volume）
+- Seed defaults: `seed/`（Volume 空時由 entrypoint 自動複製）
+- Bank QR images: put files in `Bank/` then push
 
-Dockerfile (nginx + php-fpm, port 8080). Redeploy after push. Volume ID e.g. `data` → `/var/www/data`.
+## Volume
+
+- Volume ID: `data`
+- Mount Directory: `/var/www/data`

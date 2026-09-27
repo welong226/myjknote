@@ -86,6 +86,10 @@
         const img = document.createElement('img');
         img.alt = name;
         img.loading = 'lazy';
+        img.onerror = () => {
+          thumb.textContent = '找不到圖片';
+          thumb.style.color = '#c0392b';
+        };
         img.src = src;
         thumb.replaceChildren(img);
       }
