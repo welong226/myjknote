@@ -1,0 +1,41 @@
+name: Sync to byethost (backup)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  ftp-backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: FTP deploy to byethost
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          # Required secrets: BYEHOST_FTP_SERVER, BYEHOST_FTP_USERNAME, BYEHOST_FTP_PASSWORD
+          # If web root is not /htdocs/, change server-dir below or set secret BYEHOST_FTP_SERVER_DIR
+          server: ${{ secrets.BYEHOST_FTP_SERVER }}
+          username: ${{ secrets.BYEHOST_FTP_USERNAME }}
+          password: ${{ secrets.BYEHOST_FTP_PASSWORD }}
+          server-dir: ${{ secrets.BYEHOST_FTP_SERVER_DIR || '/htdocs/' }}
+          protocol: ftp
+          timeout: 600000
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/.github*
+            **/.github*/**
+            **/scripts/**
+            **/.env*
+            **/.env.byethost*
+            **/Dockerfile
+            **/docker-entrypoint.sh
+            **/.dockerignore
+            **/zbpack.json
+            **/composer.json
+            **/README.md
+            **/BUILD_ID
+            **/.DS_Store

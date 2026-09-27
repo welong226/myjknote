@@ -4,3 +4,5 @@
 *.bk
 *.tmp
 data/**/*.tmp
+.env.byethost
+.env*.local
