@@ -1,32 +1,26 @@
 # myjknote
 
-Personal static pages + PHP APIs (from byethost), deployed on Zeabur.
+Personal static pages + PHP APIs on Zeabur.
 
 - Site: https://myjknote.zeabur.app
-- PocketBase (NoteTick sync): https://pocktbase.zeabur.app
+- PocketBase: https://pocktbase.zeabur.app
 
-## Zeabur
+## Deploy (PHP)
 
-This repo is a **PHP** app (`index.php` + `composer.json`). Provider should show **php**, not static.
+Repo includes a `Dockerfile` (nginx + php-fpm on port **8080**).
 
-### Persistent data (required for saving)
+1. Zeabur → myjknote 服務 → **Redeploy**（或刪掉舊服務後用 GitHub 重加一次）
+2. 建置方案應為 **Dockerfile / docker**，不是 static
+3. Domains 維持 `myjknote.zeabur.app`（不要對外開 :8080）
+4. **Volumes** 新增持久化磁碟，掛載路徑：
 
-Mount a volume on the service:
+   `/var/www/data`
 
-| Mount path | Contents |
-|---|---|
-| `/var/www/data` | `shift_data/`, `banks_quota.json`, `cards_data.json`, `calendar_data.json` |
+5. 驗證：開 `https://myjknote.zeabur.app/api.php?ym=2026-09`  
+   應回 JSON，不是 PHP 原始碼
 
-Without a volume, writes work until the next redeploy, then reset.
+## Layout
 
-### After pushing PHP changes
-
-1. Redeploy the `myjknote` service (or wait for auto-deploy).
-2. Build plan should be **php** (nginx + php-fpm).
-3. Test: `https://myjknote.zeabur.app/api.php?ym=2026-09` should return JSON, not PHP source.
-
-## Local files
-
-- HTML pages in repo root
-- PHP APIs: `api.php`, `bank_api.php`, `card_api.php`, `calendar_api.php`, …
-- Writable JSON under `data/`
+- HTML in repo root
+- PHP: `api.php`, `bank_api.php`, `card_api.php`, `calendar_api.php`, …
+- Writable data: `data/` (`shift_data/`, `*_data.json`, …)
