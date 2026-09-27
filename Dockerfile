@@ -9,11 +9,13 @@ WORKDIR /var/www
 
 COPY --chown=www-data:www-data . /var/www
 
-RUN mkdir -p /var/www/data/shift_data \
- && chown -R www-data:www-data /var/www/data \
+# Ensure Bank gallery assets are present in the image
+RUN test -f /var/www/Bank/004.JPG \
+ && test -f /var/www/BUILD_ID \
+ && mkdir -p /var/www/data/shift_data \
+ && chown -R www-data:www-data /var/www/data /var/www/Bank \
  && chmod -R ug+rwX /var/www/data
 
-# nginx: static + php-fpm on 8080 (Zeabur default)
 RUN cat >/etc/nginx/sites-enabled/default <<'NGINX'
 server {
     listen 8080;
@@ -24,9 +26,13 @@ server {
     location = /favicon.ico { access_log off; log_not_found off; }
     location = /robots.txt  { access_log off; log_not_found off; }
 
-    # Images / static under Bank — never rewrite to index.php
     location ^~ /Bank/ {
         try_files $uri =404;
+        types {
+            image/jpeg jpg jpeg JPG JPEG;
+            image/png png PNG;
+        }
+        default_type application/octet-stream;
         access_log off;
     }
 
@@ -54,9 +60,6 @@ server {
     error_log  /dev/stderr;
 }
 NGINX
-
-# disable default site if present
-RUN rm -f /etc/nginx/sites-enabled/default.bak 2>/dev/null; true
 
 ENV PORT=8080
 EXPOSE 8080
