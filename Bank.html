@@ -74,7 +74,10 @@
   }
 
   FILES.forEach(name => {
-    const src = 'Bank/' + encodeURI(name).replace(/%2F/g, '/');
+    // Prefer Zeabur local Bank/; fallback CDN = byethost (until local images are deployed)
+    const LOCAL = 'Bank/' + encodeURI(name).replace(/%2F/g, '/');
+    const REMOTE = 'https://myjknote.byethost18.com/Bank/' + encodeURIComponent(name);
+    const src = LOCAL;
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'img-card';
@@ -82,18 +85,27 @@
     btn.querySelector('.name').textContent = name;
     btn.onclick = () => {
       const thumb = btn.querySelector('.thumb');
+      const show = (url) => openImage(url, name);
       if (!thumb.querySelector('img')) {
         const img = document.createElement('img');
         img.alt = name;
         img.loading = 'lazy';
         img.onerror = () => {
-          thumb.textContent = '找不到圖片';
-          thumb.style.color = '#c0392b';
+          if (img.dataset.triedRemote) {
+            thumb.textContent = '找不到圖片';
+            thumb.style.color = '#c0392b';
+            return;
+          }
+          img.dataset.triedRemote = '1';
+          img.src = REMOTE;
+          show(REMOTE);
         };
-        img.src = src;
+        img.src = LOCAL;
         thumb.replaceChildren(img);
       }
-      openImage(src, name);
+      // lightbox: try local first, onerror switches via img handler above
+      const current = thumb.querySelector('img');
+      show(current && current.dataset.triedRemote ? REMOTE : LOCAL);
     };
     gallery.appendChild(btn);
   });
