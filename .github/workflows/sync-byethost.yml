@@ -7,13 +7,14 @@ on:
 
 jobs:
   ftp-backup:
-    runs-on: ubuntu-latest
+    # Pin runner; ubuntu-latest moves to 26.x after 2026-10-19
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: FTP deploy to byethost
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
         with:
           # Required secrets: BYEHOST_FTP_SERVER, BYEHOST_FTP_USERNAME, BYEHOST_FTP_PASSWORD
           # If web root is not /htdocs/, change server-dir below or set secret BYEHOST_FTP_SERVER_DIR
