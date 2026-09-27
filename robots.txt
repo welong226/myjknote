@@ -1,0 +1,7 @@
+User-agent: *
+Disallow: /Bank.html
+Disallow: /Bank/
+Disallow: /BankManager.html
+Disallow: /banks_quota.json
+Disallow: /shift_data/
+Disallow: /shift_data.json

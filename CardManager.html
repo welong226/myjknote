@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>卡片次數管理員</title>
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --primary: #2196F3;
+            --success: #4CAF50;
+            --warning: #FF9800;
+            --danger: #9e9e9e;
+            --text: #333;
+        }
+
+        body { font-family: -apple-system, sans-serif; background-color: var(--bg-color); margin: 0; padding: 15px; color: var(--text); }
+        h2 { text-align: center; margin-bottom: 20px; }
+
+        .container { max-width: 600px; margin: 0 auto; }
+        
+        /* Toolbar */
+        .toolbar { display: flex; justify-content: space-between; margin-bottom: 15px; }
+        .btn-add { background: var(--primary); color: white; border: none; padding: 10px 15px; border-radius: 8px; font-weight: bold; }
+
+        /* Card List */
+        .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 400px) { .card-grid { grid-template-columns: 1fr; } }
+
+        .card { 
+            background: var(--card-bg); border-radius: 12px; padding: 15px; 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1); position: relative;
+            display: flex; flex-direction: column; align-items: center;
+            transition: transform 0.2s;
+        }
+        .card:active { transform: scale(0.98); }
+
+        .card-name { font-weight: bold; font-size: 1.1rem; margin-bottom: 10px; width: 100%; text-align: center; border: none; background: transparent; outline: none; }
+
+        .usage-dots { display: flex; gap: 8px; margin-bottom: 15px; }
+        .dot { width: 25px; height: 25px; border-radius: 50%; border: 2px solid #ddd; }
+        .dot.active { background: var(--success); border-color: var(--success); }
+        .dot.warning { background: var(--warning); border-color: var(--warning); }
+        .dot.used { background: #eee; border-color: #ddd; }
+
+        /* Status Colors */
+        .status-3 { border-top: 5px solid var(--success); }
+        .status-2, .status-1 { border-top: 5px solid var(--warning); }
+        .status-0 { border-top: 5px solid var(--danger); opacity: 0.7; }
+
+        .actions { display: flex; width: 100%; gap: 10px; }
+        .btn { flex: 1; padding: 8px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .btn-use { background: #e3f2fd; color: var(--primary); }
+        .btn-reset { background: #f5f5f5; color: #666; font-size: 0.8rem; }
+        .btn-delete { position: absolute; top: 5px; right: 5px; background: none; color: #ccc; border: none; font-size: 1.2rem; }
+
+        #empty-tip { text-align: center; color: #999; margin-top: 50px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>📇 卡片使用管理</h2>
+    
+    <div class="toolbar">
+        <button class="btn-add" onclick="addCard()">＋ 新增卡片</button>
+        <button class="btn-reset" style="padding: 0 10px;" onclick="resetAll()">全部重置</button>
+    </div>
+
+    <div id="cardGrid" class="card-grid">
+        <!-- Cards injected here -->
+    </div>
+    <div id="empty-tip">目前沒有卡片，請點擊新增</div>
+</div>
+
+<script>
+    let cards = [];
+    const API_URL = 'card_api.php';
+
+    async function loadData() {
+        try {
+            const response = await fetch(API_URL);
+            cards = await response.json();
+            render();
+        } catch (e) {
+            console.error("Failed to load data from server, falling back to local storage", e);
+            cards = JSON.parse(localStorage.getItem('managed_cards') || '[]');
+            render();
+        }
+    }
+
+    async function save() {
+        // Save to LocalStorage for backup/offline
+        localStorage.setItem('managed_cards', JSON.stringify(cards));
+        
+        // Save to Server
+        try {
+            await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cards)
+            });
+        } catch (e) {
+            console.error("Failed to sync with server", e);
+        }
+        render();
+    }
+
+    function addCard() {
+        const name = prompt("輸入卡片名稱或編號：", `卡片 ${cards.length + 1}`);
+        if (name) {
+            cards.push({ id: Date.now(), name: name, used: 0 });
+            save();
+        }
+    }
+
+    function useCard(id) {
+        const card = cards.find(c => c.id === id);
+        if (card && card.used < 3) {
+            card.used++;
+            save();
+        }
+    }
+
+    function resetCard(id) {
+        const card = cards.find(c => c.id === id);
+        if (card) {
+            card.used = 0;
+            save();
+        }
+    }
+
+    function deleteCard(id) {
+        if (confirm("確定要刪除這張卡片嗎？")) {
+            cards = cards.filter(c => c.id !== id);
+            save();
+        }
+    }
+
+    function updateName(id, newName) {
+        const card = cards.find(c => c.id === id);
+        if (card) {
+            card.name = newName;
+            localStorage.setItem('managed_cards', JSON.stringify(cards));
+        }
+    }
+
+    function resetAll() {
+        if (confirm("確定要重置所有卡片的次數嗎？")) {
+            cards.forEach(c => c.used = 0);
+            save();
+        }
+    }
+
+    function render() {
+        const grid = document.getElementById('cardGrid');
+        const tip = document.getElementById('empty-tip');
+        grid.innerHTML = '';
+        
+        if (cards.length === 0) {
+            tip.style.display = 'block';
+            return;
+        } else {
+            tip.style.display = 'none';
+        }
+
+        cards.forEach(card => {
+            const remaining = 3 - card.used;
+            const cardEl = document.createElement('div');
+            cardEl.className = `card status-${remaining}`;
+            
+            // Generate dots
+            let dotsHtml = '';
+            for(let i=0; i<3; i++) {
+                let dotClass = 'dot';
+                if (i < remaining) {
+                    dotClass += (remaining === 3) ? ' active' : ' warning';
+                } else {
+                    dotClass += ' used';
+                }
+                dotsHtml += `<div class="${dotClass}"></div>`;
+            }
+
+            cardEl.innerHTML = `
+                <button class="btn-delete" onclick="deleteCard(${card.id})">×</button>
+                <input class="card-name" value="${card.name}" onchange="updateName(${card.id}, this.value)">
+                <div class="usage-dots">${dotsHtml}</div>
+                <div class="actions">
+                    <button class="btn btn-use" onclick="useCard(${card.id})" ${remaining === 0 ? 'disabled' : ''}>
+                        ${remaining === 0 ? '已用罄' : '使用一次'}
+                    </button>
+                    <button class="btn btn-reset" onclick="resetCard(${card.id})">重置</button>
+                </div>
+            `;
+            grid.appendChild(cardEl);
+        });
+    }
+
+    // Initialize with some cards if completely empty for first-time users
+    if (cards.length === 0) {
+        // Optional: Pre-fill 10 cards
+        /*
+        for(let i=1; i<=10; i++) {
+            cards.push({ id: i, name: `卡片 ${i}`, used: 0 });
+        }
+        save();
+        */
+    }
+
+    render();
+    loadData();
+</script>
+
+</body>
+</html>

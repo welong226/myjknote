@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>銀行優惠次數管理</title>
+    <style>
+        :root {
+            --bg: #f0f2f5;
+            --card: #ffffff;
+            --primary: #007bff;
+            --secondary: #6c757d;
+            --success: #28a745;
+            --info: #17a2b8;
+            --danger: #dc3545;
+        }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 15px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        h2 { text-align: center; color: #333; margin-bottom: 20px; }
+
+        .toolbar { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        .btn { border: none; border-radius: 8px; padding: 10px 15px; font-weight: bold; cursor: pointer; color: white; }
+        .btn-add { background: var(--success); }
+        .btn-sync { background: var(--primary); }
+
+        .bank-list { display: flex; flex-direction: column; gap: 15px; }
+        .bank-card { background: var(--card); border-radius: 15px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); position: relative; }
+        
+        .bank-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+        .bank-name { font-size: 1.2rem; font-weight: bold; color: #333; }
+        
+        .quota-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .quota-info { flex: 1; }
+        .quota-label { font-size: 0.9rem; color: #666; display: block; }
+        .quota-numbers { font-size: 1.1rem; font-weight: bold; }
+        .quota-numbers.empty { color: var(--danger); }
+
+        .action-btns { display: flex; gap: 4px; align-items: center; }
+        .btn-sm { width: 36px; height: 36px; border-radius: 50%; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; }
+        .btn-undo { width: 28px; height: 28px; font-size: 0.8rem; background: #eee; color: #999; border-radius: 50%; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .btn-withdraw { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        .btn-transfer { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        
+        .btn-edit { position: absolute; top: 10px; right: 10px; background: none; border: none; color: #ccc; cursor: pointer; }
+
+        /* Modal */
+        #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; }
+        .modal-content { background: white; padding: 20px; border-radius: 15px; width: 90%; max-width: 400px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🏦 銀行免手續費額度</h2>
+    
+    <div class="toolbar">
+        <button class="btn btn-add" onclick="openModal()">＋ 新增銀行</button>
+        <button class="btn btn-sync" onclick="loadData()">🔄 重新整理</button>
+    </div>
+
+    <div id="bankList" class="bank-list">
+        <!-- Banks will be rendered here -->
+    </div>
+</div>
+
+<!-- Edit/Add Modal -->
+<div id="modal">
+    <div class="modal-content">
+        <h3 id="modalTitle">新增銀行</h3>
+        <div class="form-group">
+            <label>銀行名稱</label>
+            <input type="text" id="bankName" placeholder="如：Richart, LINE Bank">
+        </div>
+        <div style="display: flex; gap: 15px;">
+            <div class="form-group" style="flex: 1;">
+                <label>跨提上限</label>
+                <input type="number" id="limitW" value="5">
+            </div>
+            <div class="form-group" style="flex: 1;">
+                <label>跨轉上限</label>
+                <input type="number" id="limitT" value="30">
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn" style="background:#eee; color:#333;" onclick="closeModal()">取消</button>
+            <button class="btn" style="background:var(--danger);" id="delBtn" onclick="deleteBank()">刪除</button>
+            <button class="btn" style="background:var(--success);" onclick="saveBank()">儲存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let banks = [];
+    let currentEditId = null;
+    const API_URL = 'bank_api.php';
+
+    async function loadData() {
+        try {
+            const res = await fetch(API_URL);
+            banks = await res.json();
+            render();
+        } catch (e) {
+            console.error("Load failed", e);
+        }
+    }
+
+    async function sync() {
+        try {
+            await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(banks)
+            });
+        } catch (e) {
+            console.error("Sync failed", e);
+        }
+        render();
+    }
+
+    function render() {
+        const list = document.getElementById('bankList');
+        list.innerHTML = '';
+        
+        banks.forEach(bank => {
+            const card = document.createElement('div');
+            card.className = 'bank-card';
+            
+            const remW = bank.limitW - (bank.usedW || 0);
+            const remT = bank.limitT - (bank.usedT || 0);
+
+            card.innerHTML = `
+                <button class="btn-edit" onclick="openModal(${bank.id})">⚙️</button>
+                <div class="bank-header">
+                    <span class="bank-name">${bank.name}</span>
+                </div>
+                
+                <div class="quota-row">
+                    <div class="quota-info">
+                        <span class="quota-label">跨行提款</span>
+                        <span class="quota-numbers ${remW <= 0 ? 'empty' : ''}">${remW} / ${bank.limitW}</span>
+                    </div>
+                    <div class="action-btns">
+                        <button class="btn-undo" onclick="updateUsage(${bank.id}, 'W', -1)" title="撤銷提款" ${bank.usedW <= 0 ? 'disabled' : ''}>↩️</button>
+                        <button class="btn btn-sm btn-withdraw" onclick="updateUsage(${bank.id}, 'W', 1)" ${remW <= 0 ? 'disabled' : ''}>💸</button>
+                    </div>
+                </div>
+
+                <div class="quota-row">
+                    <div class="quota-info">
+                        <span class="quota-label">跨行轉帳</span>
+                        <span class="quota-numbers ${remT <= 0 ? 'empty' : ''}">${remT} / ${bank.limitT}</span>
+                    </div>
+                    <div class="action-btns">
+                        <button class="btn-undo" onclick="updateUsage(${bank.id}, 'T', -1)" title="撤銷轉帳" ${bank.usedT <= 0 ? 'disabled' : ''}>↩️</button>
+                        <button class="btn btn-sm btn-transfer" onclick="updateUsage(${bank.id}, 'T', 1)" ${remT <= 0 ? 'disabled' : ''}>➡️</button>
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <button class="btn" style="background:#f8f9fa; color:#999; font-size:0.7rem; padding: 2px 8px;" onclick="resetUsage(${bank.id})">重置本月次數</button>
+                </div>
+            `;
+            list.appendChild(card);
+        });
+    }
+
+    function updateUsage(id, type, delta) {
+        const bank = banks.find(b => b.id === id);
+        if (type === 'W') {
+            if (delta > 0 && bank.usedW < bank.limitW) bank.usedW++;
+            if (delta < 0 && bank.usedW > 0) bank.usedW--;
+        }
+        if (type === 'T') {
+            if (delta > 0 && bank.usedT < bank.limitT) bank.usedT++;
+            if (delta < 0 && bank.usedT > 0) bank.usedT--;
+        }
+        sync();
+    }
+
+    function resetUsage(id) {
+        if (confirm("要重置這家銀行的使用次數嗎？")) {
+            const bank = banks.find(b => b.id === id);
+            bank.usedW = 0;
+            bank.usedT = 0;
+            sync();
+        }
+    }
+
+    function openModal(id = null) {
+        currentEditId = id;
+        const modal = document.getElementById('modal');
+        const delBtn = document.getElementById('delBtn');
+        
+        if (id) {
+            const bank = banks.find(b => b.id === id);
+            document.getElementById('modalTitle').textContent = "編輯銀行";
+            document.getElementById('bankName').value = bank.name;
+            document.getElementById('limitW').value = bank.limitW;
+            document.getElementById('limitT').value = bank.limitT;
+            delBtn.style.display = 'block';
+        } else {
+            document.getElementById('modalTitle').textContent = "新增銀行";
+            document.getElementById('bankName').value = '';
+            document.getElementById('limitW').value = 5;
+            document.getElementById('limitT').value = 30;
+            delBtn.style.display = 'none';
+        }
+        modal.style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('modal').style.display = 'none';
+    }
+
+    function saveBank() {
+        const name = document.getElementById('bankName').value;
+        const limitW = parseInt(document.getElementById('limitW').value);
+        const limitT = parseInt(document.getElementById('limitT').value);
+
+        if (!name) return alert("請輸入銀行名稱");
+
+        if (currentEditId) {
+            const bank = banks.find(b => b.id === currentEditId);
+            bank.name = name;
+            bank.limitW = limitW;
+            bank.limitT = limitT;
+        } else {
+            banks.push({
+                id: Date.now(),
+                name: name,
+                limitW: limitW,
+                limitT: limitT,
+                usedW: 0,
+                usedT: 0
+            });
+        }
+        closeModal();
+        sync();
+    }
+
+    function deleteBank() {
+        if (confirm("確定要刪除這家銀行嗎？")) {
+            banks = banks.filter(b => b.id !== currentEditId);
+            closeModal();
+            sync();
+        }
+    }
+
+    window.onload = loadData;
+</script>
+
+</body>
+</html>

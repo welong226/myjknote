@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <title>Bank Image Gallery</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #f4f4f9; padding: 20px; color: #333; }
+    h2 { text-align: center; color: #444; margin-bottom: 6px; }
+    .hint { text-align: center; color: #888; font-size: 13px; margin: 0 0 18px; }
+    .gallery {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 15px; max-width: 1000px; margin: 0 auto;
+    }
+    .img-card {
+      background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,.1);
+      padding: 10px; text-align: center; cursor: pointer; border: none; width: 100%;
+      font: inherit; color: #007bff; font-weight: bold;
+    }
+    .img-card:hover { transform: translateY(-3px); box-shadow: 0 4px 10px rgba(0,0,0,.12); }
+    .thumb {
+      width: 100%; aspect-ratio: 1; border-radius: 4px; margin-bottom: 8px;
+      background: #eef1f6; display: flex; align-items: center; justify-content: center;
+      color: #9aa3b2; font-size: 12px; overflow: hidden;
+    }
+    .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .name { word-break: break-all; font-size: 13px; }
+    .back-link { display: block; text-align: center; margin-top: 30px; color: #666; text-decoration: none; }
+    .lightbox {
+      position: fixed; inset: 0; background: rgba(0,0,0,.75); display: none;
+      align-items: center; justify-content: center; z-index: 50; padding: 16px;
+    }
+    .lightbox.show { display: flex; }
+    .lightbox img { max-width: min(96vw, 900px); max-height: 88vh; border-radius: 8px; background: #fff; }
+    .lightbox .close {
+      position: absolute; top: 14px; right: 18px; color: #fff; font-size: 28px;
+      background: none; border: none; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h2>🏦 Bank 檔案檢視器</h2>
+  <p class="hint">點檔名才載入圖片，避免一次吃掉大量網站 hits</p>
+  <div class="gallery" id="gallery"></div>
+  <a class="back-link" href="index.htm">← 回首頁</a>
+
+  <div class="lightbox" id="lightbox" role="dialog" aria-modal="true">
+    <button class="close" id="closeLb" aria-label="關閉">×</button>
+    <img id="lbImg" alt="">
+  </div>
+
+<script>
+(function () {
+  // 只列檔名，不預載任何圖片（開啟頁面 = 1 hit）
+  const FILES = [
+    "004.JPG","007.JPG","008SuYa.JPG","009.PNG","009.jpg","011.JPG","012.JPG",
+    "012SuYa.JPG","013.JPG","017.JPG","050.JPG","103.JPG","108.JPG",
+    "803 LOAN.jpg","803 LOAN.png","803-.jpg","803-.png","803-1.JPG","803-2.JPG",
+    "803-3.JPG","803.jpg","806.JPG","807.JPG","807SuYa.jpg","807SuYa.png",
+    "808-1.PNG","808-1.jpg","808-2.PNG","808-2.jpg","808-3.PNG","808-3.jpg",
+    "808-4.PNG","808-4.jpg","808-5.PNG","808-5.jpg","809.JPG","810.JPG",
+    "812-2.PNG","812-2.jpg","812.JPG","822 SuYa.jpg","823.JPG","824-.png","824.JPG"
+  ];
+
+  const gallery = document.getElementById('gallery');
+  const lightbox = document.getElementById('lightbox');
+  const lbImg = document.getElementById('lbImg');
+
+  function openImage(src, name) {
+    lbImg.alt = name;
+    lbImg.src = src; // 點擊才產生圖片 hit
+    lightbox.classList.add('show');
+  }
+
+  FILES.forEach(name => {
+    const src = 'Bank/' + encodeURI(name).replace(/%2F/g, '/');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'img-card';
+    btn.innerHTML = '<div class="thumb">點擊載入</div><div class="name"></div>';
+    btn.querySelector('.name').textContent = name;
+    btn.onclick = () => {
+      const thumb = btn.querySelector('.thumb');
+      if (!thumb.querySelector('img')) {
+        const img = document.createElement('img');
+        img.alt = name;
+        img.loading = 'lazy';
+        img.src = src;
+        thumb.replaceChildren(img);
+      }
+      openImage(src, name);
+    };
+    gallery.appendChild(btn);
+  });
+
+  function closeLb() {
+    lightbox.classList.remove('show');
+    lbImg.removeAttribute('src'); // 關燈箱後釋放，避免背景繼續佔用
+  }
+  document.getElementById('closeLb').onclick = closeLb;
+  lightbox.onclick = (e) => { if (e.target === lightbox) closeLb(); };
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLb(); });
+})();
+</script>
+</body>
+</html>
