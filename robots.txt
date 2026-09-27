@@ -2,6 +2,7 @@ User-agent: *
 Disallow: /Bank.html
 Disallow: /Bank/
 Disallow: /BankManager.html
-Disallow: /banks_quota.json
-Disallow: /shift_data/
-Disallow: /shift_data.json
+Disallow: /data/
+Disallow: /api.php
+Disallow: /bank_api.php
+Disallow: /card_api.php
