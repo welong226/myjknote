@@ -1,0 +1,6 @@
+{
+  "plan_type": "php",
+  "php": {
+    "version": "8.3"
+  }
+}

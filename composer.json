@@ -1,0 +1,7 @@
+{
+  "name": "welong226/myjknote",
+  "description": "Personal notes pages and PHP APIs",
+  "require": {
+    "php": ">=8.0"
+  }
+}

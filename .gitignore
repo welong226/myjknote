@@ -2,3 +2,5 @@
 *.bak
 *.old
 *.bk
+*.tmp
+data/**/*.tmp

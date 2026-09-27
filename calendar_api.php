@@ -4,7 +4,7 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST');
 header('Access-Control-Allow-Headers: Content-Type');
 
-$filename = 'calendar_data.json';
+$filename = __DIR__ . '/data/calendar_data.json';
 
 $month = isset($_GET['month']) ? (int)$_GET['month'] : 0;
 $year  = isset($_GET['year'])  ? (int)$_GET['year']  : 0;

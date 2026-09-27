@@ -2,7 +2,7 @@
 /**
  * Bank Quota API
  */
-$data_file = 'banks_quota.json';
+$data_file = __DIR__ . '/data/banks_quota.json';
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");

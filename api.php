@@ -11,8 +11,8 @@
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
-$dataDir = __DIR__ . '/shift_data';
-$legacyFile = __DIR__ . '/shift_data.json';
+$dataDir = __DIR__ . '/data/shift_data';
+$legacyFile = __DIR__ . '/data/shift_data.json';
 
 function valid_ym($ym) {
     return is_string($ym) && preg_match('/^\d{4}-\d{2}$/', $ym);

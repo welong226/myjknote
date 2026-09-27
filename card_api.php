@@ -4,7 +4,7 @@
  * Handles saving and loading card data from a JSON file.
  */
 
-$data_file = 'cards_data.json';
+$data_file = __DIR__ . '/data/cards_data.json';
 
 // Handle CORS if needed (though on same domain here)
 header("Access-Control-Allow-Origin: *");
