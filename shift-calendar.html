@@ -621,10 +621,10 @@
       const fn = toHalfWidth(fileName);
       const m = fn.match(/(20\d{2}|1[0-2]\d).*?(1[0-2]|[1-9])\s*月/) ||
         fn.match(/([一二三四五六七八九十]+)\s*月/);
-      // 簡單：檔名有 202611 / 11511
+      // 檔名 202611 / 11511AS.HTML
       const compact = fn.match(/(20\d{2})(1[0-2]|0[1-9])/);
       if (compact) return ymResult(parseInt(compact[1], 10), parseInt(compact[2], 10));
-      const roc = fn.match(/\b(1[0-2]\d)(1[0-2]|0[1-9])\b/);
+      const roc = fn.match(/(1[0-2]\d)(1[0-2]|0[1-9])/);
       if (roc) return ymResult(parseInt(roc[1], 10) + 1911, parseInt(roc[2], 10));
     }
     return null;
@@ -674,17 +674,19 @@
     return good * 3 - eight * 2 + Math.min(days.length, 31);
   }
 
-  /** OpWeb：姓名表與班別表分開並排；以列索引對應 */
+  /** OpWeb：姓名表與班別表分開並排；只認「無巢狀 table」的姓名列 */
   function extractFromSplitTables(all, name) {
     const nameHits = [];
     all.forEach((table, ti) => {
+      if (table.querySelector('table')) return; // 略過外層包表
       const rows = tableRows(table);
       rows.forEach((tr, ri) => {
         const tds = rowCells(tr);
         if (tds.length < 1 || tds.length > 4) return;
         const c0 = cellText(tds[0]);
-        if (c0 === name || c0.includes(name)) {
-          nameHits.push({ ti, ri, rows: rows.length, table });
+        // 必須幾乎剛好是姓名，避免外層大格 includes 誤判
+        if (c0 === name || c0 === name + '　') {
+          nameHits.push({ ti, ri, rows: rows.length });
         }
       });
     });
@@ -692,9 +694,10 @@
 
     let best = null;
     for (const hit of nameHits) {
-      // 班別表通常在姓名表之後、列數相近、約 28–31 欄
       for (let tj = hit.ti + 1; tj < Math.min(all.length, hit.ti + 6); tj++) {
-        const rows = tableRows(all[tj]);
+        const sched = all[tj];
+        if (sched.querySelector('table')) continue;
+        const rows = tableRows(sched);
         if (hit.ri >= rows.length) continue;
         if (Math.abs(rows.length - hit.rows) > 2) continue;
         const tds = rowCells(rows[hit.ri]);
@@ -702,7 +705,6 @@
         const days = collectDayCodes(tds, 0);
         const sc = scoreDayRow(days);
         if (sc < 0) continue;
-        // 越靠近「平時」標籤越好
         let bonus = 0;
         for (let k = Math.max(0, hit.ti - 8); k <= hit.ti; k++) {
           if (normText(all[k].textContent || '').includes('平時')) bonus += 100;
@@ -714,12 +716,73 @@
     return best && best.days.length >= 20 ? best.days.slice(0, 31) : null;
   }
 
+  /**
+   * OpWeb 原始 HTML 字串解析（不依賴瀏覽器 DOM 重排）
+   * 只取「平時」段：名單順序 ↔ 班別列順序。
+   */
+  function extractOpWebByRegex(html, name) {
+    const src = String(html || '');
+    const iPing = src.indexOf('平時');
+    if (iPing < 0) return null;
+    const section = src.slice(iPing);
+
+    const nameRe = /<font[^>]*>([^<]{2,6})\s*<\/font>\s*<\/td>\s*<td[^>]*>\s*<font[^>]*>(\d{3,})\s*<\/font>/gi;
+    const names = [];
+    let m;
+    while ((m = nameRe.exec(section)) !== null) {
+      const n = normText(m[1]);
+      if (n === '姓名' || n === '員工' || n === '編號') continue;
+      if (/^[0-9]+$/.test(n)) continue;
+      if (n.length < 2 || n.length > 4) continue;
+      names.push({ name: n, emp: m[2] });
+    }
+    let localIdx = -1;
+    for (let i = 0; i < names.length; i++) {
+      if (names[i].name === name) localIdx = i;
+    }
+    if (localIdx < 0) return null;
+    const groupSize = names.length;
+
+    const trRe = /<tr[\s\S]*?<\/tr>/gi;
+    const schedules = [];
+    let tr;
+    while ((tr = trRe.exec(section)) !== null) {
+      const rowHtml = tr[0];
+      if (/<font[^>]*>\s*\d{3,}\s*<\/font>/.test(rowHtml) &&
+          /<font[^>]*>\s*[\u4e00-\u9fff]{2,4}\s*<\/font>/.test(rowHtml)) {
+        continue;
+      }
+      const codes = [];
+      const re = /<font[^>]*>([\s\S]*?)<\/font>/gi;
+      let cm;
+      while ((cm = re.exec(rowHtml)) !== null) {
+        let v = normText(cm[1].replace(/&nbsp;/gi, ''));
+        if (v === '') v = '/';
+        if (v === '8' || isShiftCode(v)) codes.push((v === '—' || v === '-') ? '/' : v);
+        else if (codes.length >= 20) break;
+        else if (codes.length && v.length > 1) break;
+      }
+      if (codes.length >= 20) schedules.push(codes.slice(0, 31));
+    }
+    if (schedules.length < groupSize || localIdx >= groupSize) return null;
+
+    // 平時段內班別列數 = 人數；若較多則取最後一組
+    const base = schedules.length - groupSize;
+    const days = schedules[base + localIdx];
+    if (scoreDayRow(days) < 0) return null;
+    return days;
+  }
+
   /** 從輪值表 HTML 擷取「平時」表中指定姓名的 1–31 日代碼 */
   function extractPersonDays(html, personName) {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
     const name = normText(personName);
     if (!name) throw new Error('請填姓名');
 
+    // 0) OpWeb 字串解析（最穩，不受 DOM 重排影響）
+    const byRegex = extractOpWebByRegex(html, name);
+    if (byRegex) return byRegex;
+
+    const doc = new DOMParser().parseFromString(html, 'text/html');
     const all = Array.from(doc.querySelectorAll('table'));
     if (!all.length) throw new Error('HTML 內沒有表格');
 
@@ -772,52 +835,28 @@
   }
 
   function readRosterFile(file) {
-    const tryEnc = (enc) => new Promise((resolve, reject) => {
-      const rd = new FileReader();
-      rd.onload = () => resolve(String(rd.result || ''));
-      rd.onerror = () => reject(rd.error || new Error('讀檔失敗'));
-      rd.readAsText(file, enc);
-    });
-    const tryBuf = (label) => new Promise((resolve, reject) => {
-      const rd = new FileReader();
-      rd.onload = () => {
-        try {
-          const buf = rd.result;
-          resolve(new TextDecoder(label).decode(buf));
-        } catch (e) { reject(e); }
-      };
-      rd.onerror = () => reject(rd.error || new Error('讀檔失敗'));
-      rd.readAsArrayBuffer(file);
-    });
     const looksOk = (t) => {
       if (!t || t.includes('\ufffd')) return false;
       const h = toHalfWidth(t);
-      return /曾威龍|平時|輪值|值班|中華民國/.test(h) ||
-        /\d{2,3}\s*年\s*\d{1,2}\s*月/.test(h) ||
-        (t.match(/[\u4e00-\u9fff]/g) || []).length >= 8;
+      return /平時|日班|輪值|中華民國|曾威龍/.test(h) ||
+        (t.match(/[\u4e00-\u9fff]/g) || []).length >= 20;
     };
-    return (async () => {
-      // OpWeb 檔多為 Big5（meta charset=big5）
-      for (const enc of ['big5', 'Big5', 'cp950', 'x-user-defined']) {
-        try {
-          const t = await tryEnc(enc);
-          if (looksOk(t)) return t;
-        } catch (_) {}
-      }
+    return file.arrayBuffer().then((buf) => {
+      // OpWeb 固定 Big5；優先 TextDecoder，勿先用 UTF-8 誤判
       for (const enc of ['big5', 'utf-8']) {
         try {
-          const t = await tryBuf(enc);
+          const t = new TextDecoder(enc, { fatal: false }).decode(buf);
           if (looksOk(t)) return t;
         } catch (_) {}
       }
-      try {
-        const t = await tryEnc('UTF-8');
-        if (looksOk(t)) return t;
-        return t;
-      } catch (_) {
-        return tryEnc('UTF-8');
-      }
-    })();
+      return new Promise((resolve, reject) => {
+        const rd = new FileReader();
+        rd.onload = () => resolve(String(rd.result || ''));
+        rd.onerror = () => reject(rd.error || new Error('讀檔失敗'));
+        try { rd.readAsText(file, 'big5'); }
+        catch (_) { rd.readAsText(file); }
+      });
+    });
   }
 
   function daysToMonthPayload(ym, days, prevMonthData) {
