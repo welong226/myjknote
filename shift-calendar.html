@@ -568,8 +568,8 @@
 
   function parseYmFromText(text) {
     const t = toHalfWidth(text || '');
-    // 民國：115年11月 / 民國115年11月份
-    let m = t.match(/民國?\s*(\d{2,3})\s*年\s*(\d{1,2})\s*月份?/);
+    // 民國：115年11月 / 民國115年11月份（(?:民國)? 整段可省略）
+    let m = t.match(/(?:民國)?\s*(\d{2,3})\s*年\s*(\d{1,2})\s*月份?/);
     if (m) return ymResult(parseInt(m[1], 10) + 1911, parseInt(m[2], 10));
     // 西元：2026年11月
     m = t.match(/(20\d{2})\s*年\s*(\d{1,2})\s*月份?/);
