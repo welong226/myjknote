@@ -548,98 +548,153 @@
     document.getElementById('rosterInput').click();
   };
 
+  function toHalfWidth(s) {
+    return String(s || '').replace(/[\uFF01-\uFF5E]/g, ch =>
+      String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)
+    ).replace(/\u3000/g, ' ');
+  }
+
+  function normText(s) {
+    return toHalfWidth(s).replace(/[\s\u00a0\u200b\uFEFF]/g, '').trim();
+  }
+
   function parseRosterYearMonth(html) {
-    // 民國年：115年10月 → 2026-10
-    let m = html.match(/(\d{2,3})\s*年\s*(\d{1,2})\s*月/);
+    const t = toHalfWidth(html);
+    // 民國：115年11月 / 民國115年11月份
+    let m = t.match(/民國?\s*(\d{2,3})\s*年\s*(\d{1,2})\s*月份?/);
     if (m) {
       const y = parseInt(m[1], 10) + 1911;
       const mo = parseInt(m[2], 10);
-      return { y, m: mo - 1, ym: `${y}-${pad(mo)}` };
+      if (mo >= 1 && mo <= 12) return { y, m: mo - 1, ym: `${y}-${pad(mo)}` };
     }
-    m = html.match(/(20\d{2})\s*年\s*(\d{1,2})\s*月/);
+    // 西元：2026年11月
+    m = t.match(/(20\d{2})\s*年\s*(\d{1,2})\s*月份?/);
     if (m) {
       const y = parseInt(m[1], 10);
       const mo = parseInt(m[2], 10);
-      return { y, m: mo - 1, ym: `${y}-${pad(mo)}` };
+      if (mo >= 1 && mo <= 12) return { y, m: mo - 1, ym: `${y}-${pad(mo)}` };
+    }
+    // 115/11、115-11、2026/11
+    m = t.match(/(?:民國)?\s*(\d{2,3})\s*[\/.\-年]\s*(\d{1,2})\s*月?/);
+    if (m) {
+      let y = parseInt(m[1], 10);
+      const mo = parseInt(m[2], 10);
+      if (y < 1911) y += 1911;
+      if (mo >= 1 && mo <= 12) return { y, m: mo - 1, ym: `${y}-${pad(mo)}` };
+    }
+    m = t.match(/(20\d{2})\s*[\/.\-]\s*(\d{1,2})/);
+    if (m) {
+      const y = parseInt(m[1], 10);
+      const mo = parseInt(m[2], 10);
+      if (mo >= 1 && mo <= 12) return { y, m: mo - 1, ym: `${y}-${pad(mo)}` };
     }
     return null;
   }
 
   function cellText(td) {
-    return (td.textContent || '').replace(/\s+/g, '').trim();
+    return normText(td && td.textContent);
+  }
+
+  function isShiftCode(v) {
+    return v === '' || v === '/' || v === '—' || v === '-' ||
+      /^[1-5]$/.test(v) || v === 'H' || v === 'h';
   }
 
   /** 從輪值表 HTML 擷取「平時」表中指定姓名的 1–31 日代碼 */
   function extractPersonDays(html, personName) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
-    const name = (personName || '').replace(/\s+/g, '').trim();
+    const name = normText(personName);
     if (!name) throw new Error('請填姓名');
 
-    // 優先找「平時」標題後的第一個表格；否則用最後一個含該姓名的表
-    let tables = [];
     const all = Array.from(doc.querySelectorAll('table'));
-    const bodyTextNodes = Array.from(doc.querySelectorAll('body *'));
-    let pingshiTable = null;
-    for (let i = 0; i < bodyTextNodes.length; i++) {
-      const t = (bodyTextNodes[i].textContent || '').replace(/\s+/g, '');
-      if (t.includes('平時') && t.length < 20) {
-        // 找後續第一個 table
-        let el = bodyTextNodes[i];
-        while (el) {
-          if (el.tagName === 'TABLE') { pingshiTable = el; break; }
-          el = el.nextElementSibling || (el.parentElement && el.parentElement.nextElementSibling);
-          if (el && el.querySelector && el.querySelector('table')) {
-            pingshiTable = el.querySelector('table');
-            break;
-          }
-          // 往下掃 sibling
-          let sib = bodyTextNodes[i].parentElement;
-          if (sib) {
-            let n = sib.nextElementSibling;
-            while (n) {
-              if (n.tagName === 'TABLE') { pingshiTable = n; break; }
-              const inner = n.querySelector && n.querySelector('table');
-              if (inner) { pingshiTable = inner; break; }
-              n = n.nextElementSibling;
-            }
-          }
-          break;
-        }
-        break;
-      }
-    }
-    if (pingshiTable) tables = [pingshiTable];
-    else tables = all.slice().reverse(); // 下排表通常在後面
+    if (!all.length) throw new Error('HTML 內沒有表格');
 
+    // 找「平時」附近的表格（不限制文字長度；略過「假日」表）
+    const ranked = [];
+    all.forEach((table, idx) => {
+      let score = idx; // 後面的表略優先（下排）
+      let label = '';
+      let el = table.previousElementSibling;
+      for (let k = 0; k < 6 && el; k++, el = el.previousElementSibling) {
+        label += normText(el.textContent || '');
+      }
+      const parentLabel = normText((table.parentElement && table.parentElement.textContent) || '').slice(0, 80);
+      const near = label + parentLabel;
+      if (near.includes('平時')) score += 1000;
+      if (near.includes('假日') && !near.includes('平時')) score -= 500;
+      // 列數／欄數像班表者加分
+      const rows = table.querySelectorAll('tr');
+      if (rows.length >= 5) score += 50;
+      ranked.push({ table, score });
+    });
+    ranked.sort((a, b) => b.score - a.score);
+    const tables = ranked.map(x => x.table);
+
+    const attempts = [];
     for (const table of tables) {
       const rows = Array.from(table.querySelectorAll('tr'));
       for (const tr of rows) {
-        const tds = Array.from(tr.querySelectorAll('td,th'));
+        // 只用直接子 td/th，避免 Excel 巢狀表把欄位重複算
+        let tds = Array.from(tr.children).filter(el =>
+          el.tagName === 'TD' || el.tagName === 'TH'
+        );
+        if (tds.length < 5) tds = Array.from(tr.querySelectorAll('td,th'));
         if (tds.length < 5) continue;
-        // 找姓名欄：通常第 2 欄（index 1）或含姓名文字的欄
+
         let nameIdx = -1;
-        for (let i = 0; i < Math.min(tds.length, 5); i++) {
-          if (cellText(tds[i]) === name || cellText(tds[i]).includes(name)) {
-            nameIdx = i; break;
-          }
+        for (let i = 0; i < Math.min(tds.length, 8); i++) {
+          const ct = cellText(tds[i]);
+          if (ct === name || ct.includes(name)) { nameIdx = i; break; }
         }
         if (nameIdx < 0) continue;
-        // 日代碼從姓名後一欄（工號）再下一欄開始；若下一欄像工號則再跳一格
+
         let start = nameIdx + 1;
-        const maybeId = cellText(tds[start] || {});
-        if (/^\d{4,}$/.test(maybeId)) start += 1;
+        const maybeId = cellText(tds[start]);
+        if (/^\d{3,}$/.test(maybeId) && !/^[1-5]$/.test(maybeId)) start += 1;
+
         const days = [];
         for (let d = 0; d < 31 && start + d < tds.length; d++) {
           let v = cellText(tds[start + d]);
-          // 略過右側統計欄（總時數等，通常是較大數字）
+          // 右側統計欄：兩位以上數字且不是班別
           if (/^\d{2,}$/.test(v) && !/^[1-5]$/.test(v)) break;
+          if (!isShiftCode(v) && v.length > 2) break;
           if (v === '' || v === '—' || v === '-') v = '/';
           days.push(v);
         }
-        if (days.length >= 28) return days.slice(0, 31);
+        attempts.push({ days: days.length, cols: tds.length, start });
+        // 11 月 30 天；放寬到 >= 20 以免短月／缺格失敗
+        if (days.length >= 20) return days.slice(0, 31);
       }
     }
-    throw new Error('找不到「' + name + '」的平時班列');
+
+    const hint = attempts.length
+      ? `（找到姓名列但日數不足：${attempts.map(a => a.days + '格').join(', ')}）`
+      : '（HTML 內未找到此姓名；若檔案是 Big5，請再試一次）';
+    throw new Error('找不到「' + name + '」的平時班列' + hint);
+  }
+
+  function readRosterFile(file) {
+    const tryEnc = (enc) => new Promise((resolve, reject) => {
+      const rd = new FileReader();
+      rd.onload = () => resolve(String(rd.result || ''));
+      rd.onerror = () => reject(rd.error || new Error('讀檔失敗'));
+      rd.readAsText(file, enc);
+    });
+    return (async () => {
+      let utf8 = '';
+      try { utf8 = await tryEnc('UTF-8'); } catch (_) {}
+      const looksOk = (t) =>
+        /[曾威龍]|年\s*\d{1,2}\s*月|平時|輪值/.test(toHalfWidth(t)) ||
+        /[\u4e00-\u9fff]{2,}/.test(t);
+      if (utf8 && looksOk(utf8) && !utf8.includes('�')) return utf8;
+      for (const enc of ['Big5', 'big5', 'csbig5', 'x-x-big5']) {
+        try {
+          const t = await tryEnc(enc);
+          if (t && looksOk(t)) return t;
+        } catch (_) {}
+      }
+      return utf8 || (await tryEnc('UTF-8'));
+    })();
   }
 
   function daysToMonthPayload(ym, days, prevMonthData) {
@@ -673,20 +728,25 @@
   document.getElementById('rosterInput').onchange = (e) => {
     const f = e.target.files[0]; if (!f) return;
     e.target.value = '';
-    const rd = new FileReader();
-    rd.onload = async () => {
+    (async () => {
       try {
-        const html = rd.result;
+        const html = await readRosterFile(f);
         const person = importNameEl.value.trim();
         localStorage.setItem('shiftImportName', person);
         const ymInfo = parseRosterYearMonth(html);
-        if (!ymInfo) { toast('無法辨識年月（需含「115年10月」）'); return; }
+        if (!ymInfo) {
+          toast('無法辨識年月（需含「115年11月」或「2026年11月」）');
+          return;
+        }
         const days = extractPersonDays(html, person);
         // 先載入該月既有資料以保留記事
         await loadMonth(ymInfo.ym);
         const prev = {};
         Object.keys(data).forEach(k => { if (k.startsWith(ymInfo.ym)) prev[k] = data[k]; });
         const payload = daysToMonthPayload(ymInfo.ym, days, prev);
+        if (!Object.keys(payload).length) {
+          throw new Error('有讀到班列但沒有可寫入的班別（1–5 / H / h）');
+        }
         Object.keys(data).forEach(k => { if (k.startsWith(ymInfo.ym)) delete data[k]; });
         Object.assign(data, payload);
         loadedYm.add(ymInfo.ym);
@@ -695,7 +755,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (!r.ok) throw new Error('save');
+        if (!r.ok) throw new Error('儲存失敗（API ' + r.status + '）');
         view = new Date(ymInfo.y, ymInfo.m, 1);
         importOverlay.classList.remove('show');
         render();
@@ -703,8 +763,7 @@
       } catch (err) {
         toast('⚠ ' + (err.message || '匯入失敗'));
       }
-    };
-    rd.readAsText(f);
+    })();
   };
 
   document.getElementById('fileInput').onchange = (e) => {
