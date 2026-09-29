@@ -249,6 +249,9 @@
       <label style="font-size:13px;color:#5b6472;">預設擷取人員（下排「平時」表）</label>
       <input id="importName" type="text" value="曾威龍"
         style="font-size:16px;padding:10px 12px;border:1px solid #d7dce5;border-radius:10px;">
+      <label style="font-size:13px;color:#5b6472;">年月（可留空自動辨識；辨識失敗時填 2026-11）</label>
+      <input id="importYm" type="text" placeholder="例如 2026-11 或 115-11"
+        style="font-size:16px;padding:10px 12px;border:1px solid #d7dce5;border-radius:10px;">
       <div style="font-size:12px;color:#9aa3b2;line-height:1.4;">
         選擇單位輪值表 HTML（只在本機解析，不會上傳 HTML 檔）。讀「平時」表：1–5→一至五班，H→一班、h→二班，/→休假（保留原有記事）。
       </div>
@@ -558,35 +561,71 @@
     return toHalfWidth(s).replace(/[\s\u00a0\u200b\uFEFF]/g, '').trim();
   }
 
-  function parseRosterYearMonth(html) {
-    const t = toHalfWidth(html);
+  function ymResult(y, mo) {
+    if (!(mo >= 1 && mo <= 12) || !(y >= 1990 && y <= 2100)) return null;
+    return { y, m: mo - 1, ym: `${y}-${pad(mo)}` };
+  }
+
+  function parseYmFromText(text) {
+    const t = toHalfWidth(text || '');
     // 民國：115年11月 / 民國115年11月份
     let m = t.match(/民國?\s*(\d{2,3})\s*年\s*(\d{1,2})\s*月份?/);
-    if (m) {
-      const y = parseInt(m[1], 10) + 1911;
-      const mo = parseInt(m[2], 10);
-      if (mo >= 1 && mo <= 12) return { y, m: mo - 1, ym: `${y}-${pad(mo)}` };
-    }
+    if (m) return ymResult(parseInt(m[1], 10) + 1911, parseInt(m[2], 10));
     // 西元：2026年11月
     m = t.match(/(20\d{2})\s*年\s*(\d{1,2})\s*月份?/);
-    if (m) {
-      const y = parseInt(m[1], 10);
-      const mo = parseInt(m[2], 10);
-      if (mo >= 1 && mo <= 12) return { y, m: mo - 1, ym: `${y}-${pad(mo)}` };
-    }
-    // 115/11、115-11、2026/11
-    m = t.match(/(?:民國)?\s*(\d{2,3})\s*[\/.\-年]\s*(\d{1,2})\s*月?/);
+    if (m) return ymResult(parseInt(m[1], 10), parseInt(m[2], 10));
+    // 115/11、115-11
+    m = t.match(/(?:民國)?\s*(\d{2,3})\s*[\/.\-]\s*(\d{1,2})(?!\d)/);
     if (m) {
       let y = parseInt(m[1], 10);
       const mo = parseInt(m[2], 10);
-      if (y < 1911) y += 1911;
-      if (mo >= 1 && mo <= 12) return { y, m: mo - 1, ym: `${y}-${pad(mo)}` };
+      if (y >= 50 && y <= 200) y += 1911;
+      return ymResult(y, mo);
     }
-    m = t.match(/(20\d{2})\s*[\/.\-]\s*(\d{1,2})/);
+    m = t.match(/(20\d{2})\s*[\/.\-]\s*(\d{1,2})(?!\d)/);
+    if (m) return ymResult(parseInt(m[1], 10), parseInt(m[2], 10));
+    // 手動／檔名：2026-11 或 115-11
+    m = t.match(/\b(20\d{2})-(\d{1,2})\b/);
+    if (m) return ymResult(parseInt(m[1], 10), parseInt(m[2], 10));
+    m = t.match(/\b(\d{2,3})-(\d{1,2})\b/);
     if (m) {
-      const y = parseInt(m[1], 10);
-      const mo = parseInt(m[2], 10);
-      if (mo >= 1 && mo <= 12) return { y, m: mo - 1, ym: `${y}-${pad(mo)}` };
+      let y = parseInt(m[1], 10);
+      if (y >= 50 && y <= 200) y += 1911;
+      return ymResult(y, parseInt(m[2], 10));
+    }
+    return null;
+  }
+
+  function parseRosterYearMonth(html, fileName, manualYm) {
+    // 1) 使用者手動填的年月最優先
+    if (manualYm && String(manualYm).trim()) {
+      const hit = parseYmFromText(String(manualYm).trim());
+      if (hit) return hit;
+    }
+    // 2) 去掉 HTML 標籤後的純文字（Excel 常把「115」「年」「11」「月」拆開）
+    const stripped = toHalfWidth(String(html || '').replace(/<[^>]+>/g, ' '));
+    let hit = parseYmFromText(stripped);
+    if (hit) return hit;
+    // 3) DOM 可見文字
+    try {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const visible = (doc.body && (doc.body.innerText || doc.body.textContent)) || '';
+      hit = parseYmFromText(visible);
+      if (hit) return hit;
+    } catch (_) {}
+    // 4) 檔名
+    if (fileName) {
+      hit = parseYmFromText(fileName);
+      if (hit) return hit;
+      // 檔名含 十一月 / 11月
+      const fn = toHalfWidth(fileName);
+      const m = fn.match(/(20\d{2}|1[0-2]\d).*?(1[0-2]|[1-9])\s*月/) ||
+        fn.match(/([一二三四五六七八九十]+)\s*月/);
+      // 簡單：檔名有 202611 / 11511
+      const compact = fn.match(/(20\d{2})(1[0-2]|0[1-9])/);
+      if (compact) return ymResult(parseInt(compact[1], 10), parseInt(compact[2], 10));
+      const roc = fn.match(/\b(1[0-2]\d)(1[0-2]|0[1-9])\b/);
+      if (roc) return ymResult(parseInt(roc[1], 10) + 1911, parseInt(roc[2], 10));
     }
     return null;
   }
@@ -735,10 +774,11 @@
       try {
         const html = await readRosterFile(f);
         const person = importNameEl.value.trim();
+        const manualYm = (document.getElementById('importYm') || {}).value || '';
         localStorage.setItem('shiftImportName', person);
-        const ymInfo = parseRosterYearMonth(html);
+        const ymInfo = parseRosterYearMonth(html, f.name || '', manualYm);
         if (!ymInfo) {
-          toast('無法辨識年月（需含「115年11月」或「2026年11月」）');
+          toast('無法辨識年月：請在匯入視窗填「2026-11」或「115-11」後再選檔');
           return;
         }
         const days = extractPersonDays(html, person);
