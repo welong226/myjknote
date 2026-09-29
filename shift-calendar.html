@@ -639,6 +639,81 @@
       /^[1-5]$/.test(v) || v === 'H' || v === 'h';
   }
 
+  function rowCells(tr) {
+    let tds = Array.from(tr.children).filter(el =>
+      el.tagName === 'TD' || el.tagName === 'TH'
+    );
+    if (tds.length < 2) tds = Array.from(tr.querySelectorAll('td,th'));
+    return tds;
+  }
+
+  function tableRows(table) {
+    return Array.from(table.querySelectorAll('tr'));
+  }
+
+  function collectDayCodes(tds, start) {
+    const days = [];
+    for (let d = 0; d < 31 && start + d < tds.length; d++) {
+      let v = cellText(tds[start + d]);
+      if (/^\d{2,}$/.test(v) && !/^[1-5]$/.test(v)) break;
+      if (!isShiftCode(v) && v.length > 2) break;
+      if (v === '' || v === '—' || v === '-') v = '/';
+      days.push(v);
+    }
+    return days;
+  }
+
+  function scoreDayRow(days) {
+    if (!days || days.length < 20) return -1;
+    let good = 0, eight = 0;
+    for (const v of days) {
+      if (/^[1-5]$/.test(v) || v === 'H' || v === 'h' || v === '/') good++;
+      if (v === '8') eight++;
+    }
+    // OpWeb「平時」為 1–5；「日班」常出現 8（工時），降低分數
+    return good * 3 - eight * 2 + Math.min(days.length, 31);
+  }
+
+  /** OpWeb：姓名表與班別表分開並排；以列索引對應 */
+  function extractFromSplitTables(all, name) {
+    const nameHits = [];
+    all.forEach((table, ti) => {
+      const rows = tableRows(table);
+      rows.forEach((tr, ri) => {
+        const tds = rowCells(tr);
+        if (tds.length < 1 || tds.length > 4) return;
+        const c0 = cellText(tds[0]);
+        if (c0 === name || c0.includes(name)) {
+          nameHits.push({ ti, ri, rows: rows.length, table });
+        }
+      });
+    });
+    if (!nameHits.length) return null;
+
+    let best = null;
+    for (const hit of nameHits) {
+      // 班別表通常在姓名表之後、列數相近、約 28–31 欄
+      for (let tj = hit.ti + 1; tj < Math.min(all.length, hit.ti + 6); tj++) {
+        const rows = tableRows(all[tj]);
+        if (hit.ri >= rows.length) continue;
+        if (Math.abs(rows.length - hit.rows) > 2) continue;
+        const tds = rowCells(rows[hit.ri]);
+        if (tds.length < 20) continue;
+        const days = collectDayCodes(tds, 0);
+        const sc = scoreDayRow(days);
+        if (sc < 0) continue;
+        // 越靠近「平時」標籤越好
+        let bonus = 0;
+        for (let k = Math.max(0, hit.ti - 8); k <= hit.ti; k++) {
+          if (normText(all[k].textContent || '').includes('平時')) bonus += 100;
+        }
+        const total = sc + bonus + (tj - hit.ti === 1 ? 10 : 0);
+        if (!best || total > best.total) best = { days, total, sc };
+      }
+    }
+    return best && best.days.length >= 20 ? best.days.slice(0, 31) : null;
+  }
+
   /** 從輪值表 HTML 擷取「平時」表中指定姓名的 1–31 日代碼 */
   function extractPersonDays(html, personName) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -648,67 +723,51 @@
     const all = Array.from(doc.querySelectorAll('table'));
     if (!all.length) throw new Error('HTML 內沒有表格');
 
-    // 找「平時」附近的表格（不限制文字長度；略過「假日」表）
+    // 1) OpWeb 並排表（姓名表 + 班別表）
+    const split = extractFromSplitTables(all, name);
+    if (split) return split;
+
+    // 2) 傳統：同一列含姓名與各日代碼
     const ranked = [];
     all.forEach((table, idx) => {
-      let score = idx; // 後面的表略優先（下排）
+      let score = idx;
       let label = '';
       let el = table.previousElementSibling;
       for (let k = 0; k < 6 && el; k++, el = el.previousElementSibling) {
         label += normText(el.textContent || '');
       }
-      const parentLabel = normText((table.parentElement && table.parentElement.textContent) || '').slice(0, 80);
+      const parentLabel = normText((table.parentElement && table.parentElement.textContent) || '').slice(0, 120);
       const near = label + parentLabel;
-      if (near.includes('平時')) score += 1000;
-      if (near.includes('假日') && !near.includes('平時')) score -= 500;
-      // 列數／欄數像班表者加分
-      const rows = table.querySelectorAll('tr');
-      if (rows.length >= 5) score += 50;
+      if (near.includes('平時') || normText(table.textContent || '').slice(0, 40).includes('平時')) score += 1000;
+      if (near.includes('日班') && !near.includes('平時')) score -= 300;
+      if (tableRows(table).length >= 5) score += 50;
       ranked.push({ table, score });
     });
     ranked.sort((a, b) => b.score - a.score);
-    const tables = ranked.map(x => x.table);
 
     const attempts = [];
-    for (const table of tables) {
-      const rows = Array.from(table.querySelectorAll('tr'));
-      for (const tr of rows) {
-        // 只用直接子 td/th，避免 Excel 巢狀表把欄位重複算
-        let tds = Array.from(tr.children).filter(el =>
-          el.tagName === 'TD' || el.tagName === 'TH'
-        );
-        if (tds.length < 5) tds = Array.from(tr.querySelectorAll('td,th'));
+    for (const { table } of ranked) {
+      for (const tr of tableRows(table)) {
+        const tds = rowCells(tr);
         if (tds.length < 5) continue;
-
         let nameIdx = -1;
         for (let i = 0; i < Math.min(tds.length, 8); i++) {
           const ct = cellText(tds[i]);
           if (ct === name || ct.includes(name)) { nameIdx = i; break; }
         }
         if (nameIdx < 0) continue;
-
         let start = nameIdx + 1;
         const maybeId = cellText(tds[start]);
         if (/^\d{3,}$/.test(maybeId) && !/^[1-5]$/.test(maybeId)) start += 1;
-
-        const days = [];
-        for (let d = 0; d < 31 && start + d < tds.length; d++) {
-          let v = cellText(tds[start + d]);
-          // 右側統計欄：兩位以上數字且不是班別
-          if (/^\d{2,}$/.test(v) && !/^[1-5]$/.test(v)) break;
-          if (!isShiftCode(v) && v.length > 2) break;
-          if (v === '' || v === '—' || v === '-') v = '/';
-          days.push(v);
-        }
-        attempts.push({ days: days.length, cols: tds.length, start });
-        // 11 月 30 天；放寬到 >= 20 以免短月／缺格失敗
-        if (days.length >= 20) return days.slice(0, 31);
+        const days = collectDayCodes(tds, start);
+        attempts.push(days.length);
+        if (scoreDayRow(days) >= 0) return days.slice(0, 31);
       }
     }
 
     const hint = attempts.length
-      ? `（找到姓名列但日數不足：${attempts.map(a => a.days + '格').join(', ')}）`
-      : '（HTML 內未找到此姓名；若檔案是 Big5，請再試一次）';
+      ? `（找到姓名但日數為 0／不足：${attempts.join(', ')} 格；此檔可能是姓名與班別分表）`
+      : '（HTML 內未找到此姓名；請確認為 Big5 輪值表）';
     throw new Error('找不到「' + name + '」的平時班列' + hint);
   }
 
@@ -719,23 +778,45 @@
       rd.onerror = () => reject(rd.error || new Error('讀檔失敗'));
       rd.readAsText(file, enc);
     });
-    return (async () => {
-      let utf8 = '';
-      try { utf8 = await tryEnc('UTF-8'); } catch (_) {}
-      const looksOk = (t) => {
-        const h = toHalfWidth(t);
-        return /曾威龍|平時|輪值|值班/.test(h) ||
-          /\d{2,3}\s*年\s*\d{1,2}\s*月/.test(h) ||
-          /[\u4e00-\u9fff]{2,}/.test(t);
+    const tryBuf = (label) => new Promise((resolve, reject) => {
+      const rd = new FileReader();
+      rd.onload = () => {
+        try {
+          const buf = rd.result;
+          resolve(new TextDecoder(label).decode(buf));
+        } catch (e) { reject(e); }
       };
-      if (utf8 && looksOk(utf8) && !utf8.includes('�')) return utf8;
-      for (const enc of ['Big5', 'big5', 'csbig5', 'x-x-big5']) {
+      rd.onerror = () => reject(rd.error || new Error('讀檔失敗'));
+      rd.readAsArrayBuffer(file);
+    });
+    const looksOk = (t) => {
+      if (!t || t.includes('\ufffd')) return false;
+      const h = toHalfWidth(t);
+      return /曾威龍|平時|輪值|值班|中華民國/.test(h) ||
+        /\d{2,3}\s*年\s*\d{1,2}\s*月/.test(h) ||
+        (t.match(/[\u4e00-\u9fff]/g) || []).length >= 8;
+    };
+    return (async () => {
+      // OpWeb 檔多為 Big5（meta charset=big5）
+      for (const enc of ['big5', 'Big5', 'cp950', 'x-user-defined']) {
         try {
           const t = await tryEnc(enc);
-          if (t && looksOk(t)) return t;
+          if (looksOk(t)) return t;
         } catch (_) {}
       }
-      return utf8 || (await tryEnc('UTF-8'));
+      for (const enc of ['big5', 'utf-8']) {
+        try {
+          const t = await tryBuf(enc);
+          if (looksOk(t)) return t;
+        } catch (_) {}
+      }
+      try {
+        const t = await tryEnc('UTF-8');
+        if (looksOk(t)) return t;
+        return t;
+      } catch (_) {
+        return tryEnc('UTF-8');
+      }
     })();
   }
 
