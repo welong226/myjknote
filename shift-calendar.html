@@ -683,9 +683,12 @@
     return (async () => {
       let utf8 = '';
       try { utf8 = await tryEnc('UTF-8'); } catch (_) {}
-      const looksOk = (t) =>
-        /[曾威龍]|年\s*\d{1,2}\s*月|平時|輪值/.test(toHalfWidth(t)) ||
-        /[\u4e00-\u9fff]{2,}/.test(t);
+      const looksOk = (t) => {
+        const h = toHalfWidth(t);
+        return /曾威龍|平時|輪值|值班/.test(h) ||
+          /\d{2,3}\s*年\s*\d{1,2}\s*月/.test(h) ||
+          /[\u4e00-\u9fff]{2,}/.test(t);
+      };
       if (utf8 && looksOk(utf8) && !utf8.includes('�')) return utf8;
       for (const enc of ['Big5', 'big5', 'csbig5', 'x-x-big5']) {
         try {
