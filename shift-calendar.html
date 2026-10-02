@@ -168,6 +168,27 @@
     font-size: 13px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 99; white-space: nowrap;
   }
   .toast.show { opacity: 1; }
+  .roster-meta {
+    text-align: center; font-size: 13px; color: #7a8294;
+    padding: 0 20px 10px; line-height: 1.45;
+  }
+  .roster-block { padding: 0 16px 4px; max-height: 52vh; overflow-y: auto; }
+  .roster-line {
+    display: flex; gap: 10px; padding: 10px 12px; border-radius: 10px;
+    font-size: 14px; align-items: flex-start; margin-bottom: 4px;
+  }
+  .roster-line .lab {
+    flex: 0 0 42px; font-weight: 700; padding-top: 1px;
+  }
+  .roster-line .names {
+    flex: 1; color: #2b2f38; line-height: 1.45; word-break: break-word;
+  }
+  .roster-line.empty .names { color: #b0b7c3; }
+  .roster-line.mine { background: #fff8e1; }
+  .roster-note {
+    margin: 8px 20px 0; padding: 10px 12px; border-radius: 10px;
+    background: #f3f6fb; font-size: 13px; color: #1c6fd6; line-height: 1.4;
+  }
 </style>
 </head>
 <body>
@@ -239,6 +260,10 @@
   <div class="sheet" id="shiftSheet"></div>
 </div>
 
+<div class="overlay" id="dayOverlay">
+  <div class="sheet" id="daySheet"></div>
+</div>
+
 <input type="file" id="fileInput" accept="application/json,.json" style="display:none">
 <input type="file" id="rosterInput" accept=".html,.htm,text/html" style="display:none">
 <div class="overlay" id="importOverlay">
@@ -246,14 +271,14 @@
     <div class="grip"></div>
     <div class="sheet-title">匯入輪值表 HTML · OpWeb</div>
     <div class="row" style="cursor:default; flex-direction:column; align-items:stretch; gap:8px;">
-      <label style="font-size:13px;color:#5b6472;">預設擷取人員（下排「平時」表）</label>
+      <label style="font-size:13px;color:#5b6472;">主畫面標示人員（格子顯示此人班別）</label>
       <input id="importName" type="text" value="曾威龍"
         style="font-size:16px;padding:10px 12px;border:1px solid #d7dce5;border-radius:10px;">
       <label style="font-size:13px;color:#5b6472;">年月（可留空自動辨識；辨識失敗時填 2026-11）</label>
       <input id="importYm" type="text" placeholder="例如 2026-11 或 115-11"
         style="font-size:16px;padding:10px 12px;border:1px solid #d7dce5;border-radius:10px;">
       <div style="font-size:12px;color:#9aa3b2;line-height:1.4;">
-        選擇單位輪值表 HTML（只在本機解析，不會上傳 HTML 檔）。讀「平時」表：1–5→一至五班，H→一班、h→二班，/→休假（保留原有記事）。
+        匯入「平時」全單位班表（本機解析）。格子標示你的班別；點日期可看當天一～五班與休假是誰。代碼：1–5→各班，H→一班、h→二班，/→休假（保留原有記事）。
       </div>
     </div>
     <div class="row" id="pickRosterBtn"><span class="ico">📄</span> 選擇 HTML 檔</div>
@@ -334,19 +359,34 @@
 
   function mondayIndex(d){ return (d.getDay() + 6) % 7; }
 
-  // 讀取某天的資料：相容舊格式（純字串班別）與新格式（{shift, note}）
+  function emptyRoster(){
+    return { s1: [], s2: [], s3: [], s4: [], s5: [], off: [] };
+  }
+  function hasRosterPeople(roster){
+    if (!roster || typeof roster !== 'object') return false;
+    return ['s1','s2','s3','s4','s5','off'].some(k => Array.isArray(roster[k]) && roster[k].length);
+  }
+  // 讀取某天：相容舊格式（字串 / {shift,note}）與含 roster 的單位班表
   function entryOf(k){
     const v = data[k];
-    if (!v) return { shift: null, note: '' };
-    if (typeof v === 'string') return { shift: v, note: '' };
-    return { shift: v.shift || null, note: v.note || '' };
+    if (!v) return { shift: null, note: '', roster: null };
+    if (typeof v === 'string') return { shift: v, note: '', roster: null };
+    return {
+      shift: v.shift || null,
+      note: v.note || '',
+      roster: v.roster && typeof v.roster === 'object' ? v.roster : null
+    };
   }
-  // 寫入某天的資料：班別與記事皆空則刪除該天
-  function writeEntry(k, shift, note){
+  // 寫入某天：班別／記事／名單皆空則刪除；編輯時預設保留原 roster
+  function writeEntry(k, shift, note, roster){
+    const prev = entryOf(k);
     const s = shift || null;
     const n = (note || '').trim();
-    if (!s && !n) { delete data[k]; }
-    else data[k] = { shift: s, note: n };
+    const r = roster !== undefined ? roster : prev.roster;
+    if (!s && !n && !hasRosterPeople(r)) { delete data[k]; return; }
+    const obj = { shift: s, note: n };
+    if (hasRosterPeople(r)) obj.roster = r;
+    data[k] = obj;
   }
 
   function render(){
@@ -393,7 +433,7 @@
         div.appendChild(nt);
         div.onclick = () => {
           if (editMode){ selectedKey = k; openEdit(); }
-          else { selectedKey = k; render(); }
+          else { selectedKey = k; openDayDetail(k); }
         };
       } else {
         const num = document.createElement('div');
@@ -468,6 +508,56 @@
     document.getElementById('curNote').textContent = e.note ? e.note : '（無）';
     document.getElementById('editOverlay').classList.add('show');
   }
+
+  const WEEKDAY_LABELS = ['日','一','二','三','四','五','六'];
+  function openDayDetail(k){
+    selectedKey = k;
+    render();
+    const e = entryOf(k);
+    const dt = new Date(k + 'T12:00:00');
+    const wd = isNaN(dt.getTime()) ? '' : '（週' + WEEKDAY_LABELS[dt.getDay()] + '）';
+    const myShift = e.shift && SHIFT_TYPES[e.shift] ? SHIFT_TYPES[e.shift].name : '未設定';
+    let focusName = '曾威龍';
+    try {
+      focusName = ((document.getElementById('importName') || {}).value || '').trim() ||
+        localStorage.getItem('shiftImportName') || '曾威龍';
+    } catch (_) {}
+    const focusNorm = normText(focusName);
+    const sheet = document.getElementById('daySheet');
+    const order = ['s1','s2','s3','s4','s5','off'];
+    let body = '';
+    if (hasRosterPeople(e.roster)) {
+      body = '<div class="roster-block">' + order.map(sk => {
+        const names = (e.roster[sk] || []).slice();
+        const mine = names.some(n => normText(n) === focusNorm);
+        const label = SHIFT_TYPES[sk].name;
+        const chip = SHIFT_TYPES[sk].label;
+        const cls = SHIFT_TYPES[sk].cls;
+        const text = names.length ? names.join('、') : '—';
+        return `<div class="roster-line${mine ? ' mine' : ''}${names.length ? '' : ' empty'}">` +
+          `<span class="lab"><span class="chip ${cls}">${chip}</span></span>` +
+          `<span class="names"><b>${label}</b>　${text}</span></div>`;
+      }).join('') + '</div>';
+    } else {
+      body = `<div class="roster-meta">尚無單位名單<br>請用匯入匯入 OpWeb「平時」HTML</div>` +
+        `<div class="roster-block">` +
+        `<div class="roster-line"><span class="lab">班</span>` +
+        `<span class="names">${myShift}</span></div></div>`;
+    }
+    const noteHtml = e.note
+      ? `<div class="roster-note">記事：${e.note.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</div>`
+      : '';
+    sheet.innerHTML =
+      `<div class="grip"></div>` +
+      `<div class="sheet-title">${k}${wd}</div>` +
+      `<div class="roster-meta">我的班別：${myShift}</div>` +
+      body + noteHtml +
+      `<div class="row" id="dayCloseBtn"><span class="ico">✕</span> 關閉</div>`;
+    document.getElementById('dayCloseBtn').onclick = () => {
+      document.getElementById('dayOverlay').classList.remove('show');
+    };
+    document.getElementById('dayOverlay').classList.add('show');
+  }
   editBtn.onclick = () => {
     setEditMode(!editMode);
     if (editMode && !selectedKey) selectedKey = keyOf(today.getFullYear(), today.getMonth(), today.getDate());
@@ -527,6 +617,8 @@
   editOverlay.onclick = (e) => { if (e.target === editOverlay) editOverlay.classList.remove('show'); };
   const shiftOverlay = document.getElementById('shiftOverlay');
   shiftOverlay.onclick = (e) => { if (e.target === shiftOverlay) shiftOverlay.classList.remove('show'); };
+  const dayOverlay = document.getElementById('dayOverlay');
+  dayOverlay.onclick = (e) => { if (e.target === dayOverlay) dayOverlay.classList.remove('show'); };
 
   // ---- 匯入：JSON 或輪值表 HTML ----
   const importOverlay = document.getElementById('importOverlay');
@@ -674,53 +766,67 @@
     return good * 3 - eight * 2 + Math.min(days.length, 31);
   }
 
-  /** OpWeb：姓名表與班別表分開並排；只認「無巢狀 table」的姓名列 */
-  function extractFromSplitTables(all, name) {
-    const nameHits = [];
-    all.forEach((table, ti) => {
-      if (table.querySelector('table')) return; // 略過外層包表
-      const rows = tableRows(table);
-      rows.forEach((tr, ri) => {
+  /** OpWeb：並排姓名表 + 班別表 → 全單位 [{name, days}] */
+  function extractAllFromSplitTables(all) {
+    let best = null;
+    for (let ti = 0; ti < all.length; ti++) {
+      const nameTable = all[ti];
+      if (nameTable.querySelector('table')) continue;
+      const nRows = tableRows(nameTable);
+      const namesByRi = {};
+      nRows.forEach((tr, ri) => {
         const tds = rowCells(tr);
         if (tds.length < 1 || tds.length > 4) return;
-        const c0 = cellText(tds[0]);
-        // 必須幾乎剛好是姓名，避免外層大格 includes 誤判
-        if (c0 === name || c0 === name + '　') {
-          nameHits.push({ ti, ri, rows: rows.length });
-        }
+        let c0 = cellText(tds[0]).replace(/　+$/, '');
+        if (c0.length < 2 || c0.length > 4) return;
+        if (/^[0-9]+$/.test(c0)) return;
+        if (c0 === '姓名' || c0 === '員工' || c0 === '編號') return;
+        namesByRi[ri] = c0;
       });
-    });
-    if (!nameHits.length) return null;
+      const nameCount = Object.keys(namesByRi).length;
+      if (nameCount < 3) continue;
 
-    let best = null;
-    for (const hit of nameHits) {
-      for (let tj = hit.ti + 1; tj < Math.min(all.length, hit.ti + 6); tj++) {
+      for (let tj = ti + 1; tj < Math.min(all.length, ti + 6); tj++) {
         const sched = all[tj];
         if (sched.querySelector('table')) continue;
-        const rows = tableRows(sched);
-        if (hit.ri >= rows.length) continue;
-        if (Math.abs(rows.length - hit.rows) > 2) continue;
-        const tds = rowCells(rows[hit.ri]);
-        if (tds.length < 20) continue;
-        const days = collectDayCodes(tds, 0);
-        const sc = scoreDayRow(days);
-        if (sc < 0) continue;
+        const sRows = tableRows(sched);
+        if (Math.abs(sRows.length - nRows.length) > 2) continue;
+        const people = [];
+        Object.keys(namesByRi).forEach(riStr => {
+          const ri = parseInt(riStr, 10);
+          if (ri >= sRows.length) return;
+          const tds = rowCells(sRows[ri]);
+          if (tds.length < 20) return;
+          const days = collectDayCodes(tds, 0);
+          if (scoreDayRow(days) < 0) return;
+          people.push({ name: namesByRi[ri], days: days.slice(0, 31) });
+        });
+        if (people.length < 3) continue;
         let bonus = 0;
-        for (let k = Math.max(0, hit.ti - 8); k <= hit.ti; k++) {
+        for (let k = Math.max(0, ti - 8); k <= ti; k++) {
           if (normText(all[k].textContent || '').includes('平時')) bonus += 100;
         }
-        const total = sc + bonus + (tj - hit.ti === 1 ? 10 : 0);
-        if (!best || total > best.total) best = { days, total, sc };
+        const avgSc = people.reduce((s, p) => s + scoreDayRow(p.days), 0) / people.length;
+        const score = people.length * 10 + bonus + avgSc + (tj - ti === 1 ? 10 : 0);
+        if (!best || score > best.score) best = { people, score };
       }
     }
-    return best && best.days.length >= 20 ? best.days.slice(0, 31) : null;
+    return best ? best.people : null;
+  }
+
+  /** OpWeb：姓名表與班別表分開並排；只認「無巢狀 table」的姓名列（單人） */
+  function extractFromSplitTables(all, name) {
+    const allPeople = extractAllFromSplitTables(all);
+    if (!allPeople) return null;
+    const hit = allPeople.find(p => p.name === name || p.name === name + '　');
+    return hit ? hit.days : null;
   }
 
   /**
    * OpWeb 原始 HTML 字串解析（不依賴瀏覽器 DOM 重排）
-   * 只取「平時」段：名單順序 ↔ 班別列順序。
+   * 只取「平時」段：名單順序 ↔ 班別列順序 → 全單位。
    */
-  function extractOpWebByRegex(html, name) {
+  function extractOpWebAllPeople(html) {
     const src = String(html || '');
     const iPing = src.indexOf('平時');
     if (iPing < 0) return null;
@@ -736,11 +842,7 @@
       if (n.length < 2 || n.length > 4) continue;
       names.push({ name: n, emp: m[2] });
     }
-    let localIdx = -1;
-    for (let i = 0; i < names.length; i++) {
-      if (names[i].name === name) localIdx = i;
-    }
-    if (localIdx < 0) return null;
+    if (!names.length) return null;
     const groupSize = names.length;
 
     const trRe = /<tr[\s\S]*?<\/tr>/gi;
@@ -764,33 +866,39 @@
       }
       if (codes.length >= 20) schedules.push(codes.slice(0, 31));
     }
-    if (schedules.length < groupSize || localIdx >= groupSize) return null;
+    if (schedules.length < groupSize) return null;
 
     // 平時段內班別列數 = 人數；若較多則取最後一組
     const base = schedules.length - groupSize;
-    const days = schedules[base + localIdx];
-    if (scoreDayRow(days) < 0) return null;
-    return days;
+    const people = [];
+    for (let i = 0; i < groupSize; i++) {
+      const days = schedules[base + i];
+      if (!days || scoreDayRow(days) < 0) continue;
+      people.push({ name: names[i].name, days });
+    }
+    return people.length ? people : null;
   }
 
-  /** 從輪值表 HTML 擷取「平時」表中指定姓名的 1–31 日代碼 */
-  function extractPersonDays(html, personName) {
-    const name = normText(personName);
-    if (!name) throw new Error('請填姓名');
+  function extractOpWebByRegex(html, name) {
+    const people = extractOpWebAllPeople(html);
+    if (!people) return null;
+    const hit = people.find(p => p.name === name);
+    return hit ? hit.days : null;
+  }
 
-    // 0) OpWeb 字串解析（最穩，不受 DOM 重排影響）
-    const byRegex = extractOpWebByRegex(html, name);
-    if (byRegex) return byRegex;
+  /** 從輪值表 HTML 擷取「平時」全單位名單與各日代碼 */
+  function extractFullRoster(html) {
+    const byRegex = extractOpWebAllPeople(html);
+    if (byRegex && byRegex.length) return byRegex;
 
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const all = Array.from(doc.querySelectorAll('table'));
     if (!all.length) throw new Error('HTML 內沒有表格');
 
-    // 1) OpWeb 並排表（姓名表 + 班別表）
-    const split = extractFromSplitTables(all, name);
-    if (split) return split;
+    const split = extractAllFromSplitTables(all);
+    if (split && split.length) return split;
 
-    // 2) 傳統：同一列含姓名與各日代碼
+    // 傳統：同一列含姓名與各日代碼 → 掃全部列
     const ranked = [];
     all.forEach((table, idx) => {
       let score = idx;
@@ -808,30 +916,54 @@
     });
     ranked.sort((a, b) => b.score - a.score);
 
-    const attempts = [];
     for (const { table } of ranked) {
+      const people = [];
       for (const tr of tableRows(table)) {
         const tds = rowCells(tr);
         if (tds.length < 5) continue;
         let nameIdx = -1;
+        let person = '';
         for (let i = 0; i < Math.min(tds.length, 8); i++) {
           const ct = cellText(tds[i]);
-          if (ct === name || ct.includes(name)) { nameIdx = i; break; }
+          if (ct.length >= 2 && ct.length <= 4 && !/^[0-9]+$/.test(ct) &&
+              ct !== '姓名' && ct !== '員工' && ct !== '編號') {
+            nameIdx = i; person = ct; break;
+          }
         }
         if (nameIdx < 0) continue;
         let start = nameIdx + 1;
         const maybeId = cellText(tds[start]);
         if (/^\d{3,}$/.test(maybeId) && !/^[1-5]$/.test(maybeId)) start += 1;
         const days = collectDayCodes(tds, start);
-        attempts.push(days.length);
-        if (scoreDayRow(days) >= 0) return days.slice(0, 31);
+        if (scoreDayRow(days) >= 0) people.push({ name: person, days: days.slice(0, 31) });
       }
+      if (people.length >= 3) return people;
     }
+    throw new Error('無法解析單位平時班表（需含姓名與班別列）');
+  }
 
-    const hint = attempts.length
-      ? `（找到姓名但日數為 0／不足：${attempts.join(', ')} 格；此檔可能是姓名與班別分表）`
-      : '（HTML 內未找到此姓名；請確認為 Big5 輪值表）';
-    throw new Error('找不到「' + name + '」的平時班列' + hint);
+  /** 從輪值表 HTML 擷取「平時」表中指定姓名的 1–31 日代碼 */
+  function extractPersonDays(html, personName) {
+    const name = normText(personName);
+    if (!name) throw new Error('請填姓名');
+
+    const byRegex = extractOpWebByRegex(html, name);
+    if (byRegex) return byRegex;
+
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const all = Array.from(doc.querySelectorAll('table'));
+    if (!all.length) throw new Error('HTML 內沒有表格');
+
+    const split = extractFromSplitTables(all, name);
+    if (split) return split;
+
+    try {
+      const full = extractFullRoster(html);
+      const hit = full.find(p => p.name === name);
+      if (hit) return hit.days;
+    } catch (_) {}
+
+    throw new Error('找不到「' + name + '」的平時班列（請確認為 Big5 輪值表）');
   }
 
   function readRosterFile(file) {
@@ -859,8 +991,20 @@
     });
   }
 
+  function codeToShiftKey(raw) {
+    const v = String(raw == null ? '/' : raw).trim();
+    if (v === '1') return 's1';
+    if (v === '2') return 's2';
+    if (v === '3') return 's3';
+    if (v === '4') return 's4';
+    if (v === '5') return 's5';
+    if (v === 'H') return 's1'; // 假日值班 H → 一班
+    if (v === 'h') return 's2'; // 假日值班 h → 二班
+    if (v === '/' || v === '' || v === '—' || v === '-') return 'off';
+    return null;
+  }
+
   function daysToMonthPayload(ym, days, prevMonthData) {
-    const mapc = { '1': 's1', '2': 's2', '3': 's3', '4': 's4', '5': 's5' };
     const payload = {};
     const daysInMonth = new Date(
       parseInt(ym.slice(0, 4), 10),
@@ -869,20 +1013,51 @@
     ).getDate();
     for (let i = 1; i <= Math.min(days.length, daysInMonth); i++) {
       const k = `${ym}-${pad(i)}`;
-      const raw = String(days[i - 1] || '/').trim();
+      const sk = codeToShiftKey(days[i - 1]);
       const old = prevMonthData[k];
       const oldNote = old && typeof old === 'object' ? (old.note || '').trim() : '';
-      if (mapc[raw]) {
-        payload[k] = { shift: mapc[raw], note: oldNote };
-      } else if (raw === 'H') {
-        // 假日值班 H → 一班
-        payload[k] = { shift: 's1', note: oldNote };
-      } else if (raw === 'h') {
-        // 假日值班 h → 二班
-        payload[k] = { shift: 's2', note: oldNote };
-      } else if (oldNote) {
-        payload[k] = { shift: null, note: oldNote };
+      const oldRoster = old && typeof old === 'object' ? old.roster : null;
+      if (sk && sk !== 'off') {
+        const obj = { shift: sk, note: oldNote };
+        if (hasRosterPeople(oldRoster)) obj.roster = oldRoster;
+        payload[k] = obj;
+      } else if (sk === 'off') {
+        const obj = { shift: 'off', note: oldNote };
+        if (hasRosterPeople(oldRoster)) obj.roster = oldRoster;
+        payload[k] = obj;
+      } else if (oldNote || hasRosterPeople(oldRoster)) {
+        const obj = { shift: null, note: oldNote };
+        if (hasRosterPeople(oldRoster)) obj.roster = oldRoster;
+        payload[k] = obj;
       }
+    }
+    return payload;
+  }
+
+  /** 全單位班列 → 每日 { shift(焦點), note, roster:{s1..off} } */
+  function peopleToMonthPayload(ym, people, focusName, prevMonthData) {
+    const focus = normText(focusName);
+    const daysInMonth = new Date(
+      parseInt(ym.slice(0, 4), 10),
+      parseInt(ym.slice(5, 7), 10),
+      0
+    ).getDate();
+    const payload = {};
+    for (let i = 1; i <= daysInMonth; i++) {
+      const k = `${ym}-${pad(i)}`;
+      const roster = emptyRoster();
+      let focusShift = null;
+      for (const p of people) {
+        if (!p.days || p.days[i - 1] === undefined) continue;
+        const sk = codeToShiftKey(p.days[i - 1]);
+        if (!sk) continue;
+        roster[sk].push(p.name);
+        if (normText(p.name) === focus) focusShift = sk;
+      }
+      const old = prevMonthData[k];
+      const oldNote = old && typeof old === 'object' ? (old.note || '').trim() : '';
+      if (!hasRosterPeople(roster) && !oldNote) continue;
+      payload[k] = { shift: focusShift, note: oldNote, roster };
     }
     return payload;
   }
@@ -893,7 +1068,7 @@
     (async () => {
       try {
         const html = await readRosterFile(f);
-        const person = importNameEl.value.trim();
+        const person = importNameEl.value.trim() || '曾威龍';
         const manualYm = (document.getElementById('importYm') || {}).value || '';
         localStorage.setItem('shiftImportName', person);
         const ymInfo = parseRosterYearMonth(html, f.name || '', manualYm);
@@ -901,12 +1076,16 @@
           toast('無法辨識年月：請在匯入視窗填「2026-11」或「115-11」後再選檔');
           return;
         }
-        const days = extractPersonDays(html, person);
+        const people = extractFullRoster(html);
+        const focusHit = people.find(p => normText(p.name) === normText(person));
+        if (!focusHit) {
+          throw new Error('名單中找不到「' + person + '」（已讀到 ' + people.length + ' 人）');
+        }
         // 先載入該月既有資料以保留記事
         await loadMonth(ymInfo.ym);
         const prev = {};
         Object.keys(data).forEach(k => { if (k.startsWith(ymInfo.ym)) prev[k] = data[k]; });
-        const payload = daysToMonthPayload(ymInfo.ym, days, prev);
+        const payload = peopleToMonthPayload(ymInfo.ym, people, person, prev);
         if (!Object.keys(payload).length) {
           throw new Error('有讀到班列但沒有可寫入的班別（1–5 / H / h）');
         }
@@ -922,7 +1101,7 @@
         view = new Date(ymInfo.y, ymInfo.m, 1);
         importOverlay.classList.remove('show');
         render();
-        toast(`已匯入 ${person} ${ymInfo.ym}（${Object.keys(payload).length} 天）`);
+        toast(`已匯入全單位 ${people.length} 人 · ${ymInfo.ym}（標示 ${person}）`);
       } catch (err) {
         toast('⚠ ' + (err.message || '匯入失敗'));
       }
