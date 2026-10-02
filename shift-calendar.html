@@ -530,13 +530,12 @@
       body = '<div class="roster-block">' + order.map(sk => {
         const names = (e.roster[sk] || []).slice();
         const mine = names.some(n => normText(n) === focusNorm);
-        const label = SHIFT_TYPES[sk].name;
         const chip = SHIFT_TYPES[sk].label;
         const cls = SHIFT_TYPES[sk].cls;
         const text = names.length ? names.join('、') : '—';
         return `<div class="roster-line${mine ? ' mine' : ''}${names.length ? '' : ' empty'}">` +
           `<span class="lab"><span class="chip ${cls}">${chip}</span></span>` +
-          `<span class="names"><b>${label}</b>　${text}</span></div>`;
+          `<span class="names">${text}</span></div>`;
       }).join('') + '</div>';
     } else {
       body = `<div class="roster-meta">尚無單位名單<br>請用匯入匯入 OpWeb「平時」HTML</div>` +
