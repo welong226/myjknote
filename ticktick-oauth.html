@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NoteTick · TickTick</title>
+</head>
+<body style="font-family:sans-serif;padding:24px">
+  <p>授權完成，正在返回 NoteTick…</p>
+  <script>
+    (function () {
+      var q = window.location.search || '';
+      if (!q && window.location.hash) {
+        q = '?' + window.location.hash.replace(/^#/, '');
+      }
+      window.location.replace('notetick://oauth' + q);
+      setTimeout(function () {
+        document.body.innerHTML =
+          '<p>若沒有自動返回 App，請手動切回 NoteTick。</p>';
+      }, 2000);
+    })();
+  </script>
+</body>
+</html>
