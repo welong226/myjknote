@@ -5,42 +5,98 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NoteTick · TickTick</title>
   <style>
-    body { font-family: sans-serif; padding: 24px; line-height: 1.5; }
-    a.btn {
-      display: inline-block; margin: 12px 0; padding: 12px 18px;
-      background: #1a73e8; color: #fff; text-decoration: none; border-radius: 8px;
+    body { font-family: sans-serif; padding: 24px; line-height: 1.5; max-width: 40rem; }
+    a.btn, button.btn {
+      display: inline-block; margin: 8px 8px 8px 0; padding: 12px 18px;
+      background: #1a73e8; color: #fff; text-decoration: none; border: 0;
+      border-radius: 8px; font-size: 16px; cursor: pointer;
     }
+    button.btn.secondary { background: #5f6368; }
     pre {
       white-space: pre-wrap; word-break: break-all;
       background: #f3f3f3; padding: 12px; border-radius: 8px; font-size: 13px;
+      user-select: all;
     }
+    .ok { color: #0d652d; font-weight: 600; }
+    .err { color: #b3261e; }
   </style>
 </head>
 <body>
-  <p id="msg">授權完成，正在返回 NoteTick…</p>
-  <p><a class="btn" id="open" href="#">打開 NoteTick</a></p>
-  <p>若沒自動返回，請複製下方網址，回到 NoteTick 貼上：</p>
+  <p id="msg">處理授權結果…</p>
   <pre id="url"></pre>
+  <p>
+    <button type="button" class="btn" id="copy">複製網址</button>
+    <a class="btn secondary" id="open" href="#">打開 NoteTick</a>
+  </p>
+  <p id="hint" style="font-size:13px;color:#666"></p>
   <script>
     (function () {
       var q = window.location.search || '';
       if (!q && window.location.hash) {
         q = '?' + window.location.hash.replace(/^#/, '');
       }
-      var deep = 'notetick://oauth' + q;
-      var pageUrl = window.location.href;
-      document.getElementById('open').href = deep;
-      document.getElementById('url').textContent = pageUrl;
-      if (q.indexOf('code=') >= 0) {
-        window.location.replace(deep);
-      } else if (q.indexOf('error=') >= 0) {
-        document.getElementById('msg').textContent =
-          '授權失敗，請關閉此頁，回 NoteTick 重試（每次都要重新按匯入）。';
+      var pageUrl = window.location.href.split('#')[0];
+      if (window.location.search) {
+        pageUrl = window.location.origin + window.location.pathname + window.location.search;
       }
-      setTimeout(function () {
-        document.getElementById('msg').textContent =
-          '若仍停在此頁，請按「打開 NoteTick」，或複製上方網址貼回 App。';
-      }, 1500);
+      var deep = 'notetick://oauth' + q;
+      var msg = document.getElementById('msg');
+      var urlEl = document.getElementById('url');
+      var hint = document.getElementById('hint');
+      var open = document.getElementById('open');
+      var copyBtn = document.getElementById('copy');
+
+      urlEl.textContent = pageUrl;
+      open.href = deep;
+
+      function copyText() {
+        var text = pageUrl;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          return navigator.clipboard.writeText(text).then(function () {
+            copyBtn.textContent = '已複製';
+          }).catch(function () {
+            selectFallback();
+          });
+        }
+        selectFallback();
+        return Promise.resolve();
+      }
+
+      function selectFallback() {
+        var range = document.createRange();
+        range.selectNodeContents(urlEl);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        try {
+          document.execCommand('copy');
+          copyBtn.textContent = '已複製';
+        } catch (e) {
+          copyBtn.textContent = '請長按網址複製';
+        }
+      }
+
+      copyBtn.addEventListener('click', function () { copyText(); });
+
+      if (q.indexOf('error=') >= 0) {
+        msg.className = 'err';
+        msg.textContent = '授權失敗。請關閉此頁，回 NoteTick 重按匯入後再試。';
+        hint.textContent = '不要貼 confirm_access 網址；必須重新授權拿到含 code= 的網址。';
+        return;
+      }
+
+      if (q.indexOf('code=') >= 0) {
+        msg.className = 'ok';
+        msg.textContent = '授權成功。請複製下方網址，回到 NoteTick 貼上。';
+        hint.textContent =
+          '此頁會停住，不會自動關掉。複製後切回 NoteTick，貼到「授權後網址」再按匯入。';
+        // 自動複製；不自動跳 notetick://（會讓畫面一閃消失、來不及抄 code）
+        copyText();
+        return;
+      }
+
+      msg.textContent = '尚未取得授權碼。請從 NoteTick 重新按匯入。';
+      hint.textContent = '正確網址應類似：…/ticktick-oauth.html?code=……';
     })();
   </script>
 </body>
