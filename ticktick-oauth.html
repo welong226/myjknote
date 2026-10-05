@@ -4,20 +4,43 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NoteTick · TickTick</title>
+  <style>
+    body { font-family: sans-serif; padding: 24px; line-height: 1.5; }
+    a.btn {
+      display: inline-block; margin: 12px 0; padding: 12px 18px;
+      background: #1a73e8; color: #fff; text-decoration: none; border-radius: 8px;
+    }
+    pre {
+      white-space: pre-wrap; word-break: break-all;
+      background: #f3f3f3; padding: 12px; border-radius: 8px; font-size: 13px;
+    }
+  </style>
 </head>
-<body style="font-family:sans-serif;padding:24px">
-  <p>授權完成，正在返回 NoteTick…</p>
+<body>
+  <p id="msg">授權完成，正在返回 NoteTick…</p>
+  <p><a class="btn" id="open" href="#">打開 NoteTick</a></p>
+  <p>若沒自動返回，請複製下方網址，回到 NoteTick 貼上：</p>
+  <pre id="url"></pre>
   <script>
     (function () {
       var q = window.location.search || '';
       if (!q && window.location.hash) {
         q = '?' + window.location.hash.replace(/^#/, '');
       }
-      window.location.replace('notetick://oauth' + q);
+      var deep = 'notetick://oauth' + q;
+      var pageUrl = window.location.href;
+      document.getElementById('open').href = deep;
+      document.getElementById('url').textContent = pageUrl;
+      if (q.indexOf('code=') >= 0) {
+        window.location.replace(deep);
+      } else if (q.indexOf('error=') >= 0) {
+        document.getElementById('msg').textContent =
+          '授權失敗，請關閉此頁，回 NoteTick 重試（每次都要重新按匯入）。';
+      }
       setTimeout(function () {
-        document.body.innerHTML =
-          '<p>若沒有自動返回 App，請手動切回 NoteTick。</p>';
-      }, 2000);
+        document.getElementById('msg').textContent =
+          '若仍停在此頁，請按「打開 NoteTick」，或複製上方網址貼回 App。';
+      }, 1500);
     })();
   </script>
 </body>
