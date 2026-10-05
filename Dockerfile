@@ -12,7 +12,7 @@ COPY --chown=www-data:www-data . /var/www
 # Ensure Bank gallery assets are present in the image
 RUN test -f /var/www/Bank/004.JPG \
  && test -f /var/www/BUILD_ID \
- && mkdir -p /var/www/data/shift_data \
+ && mkdir -p /var/www/data/shift_data /var/www/data/vouchers \
  && chown -R www-data:www-data /var/www/data /var/www/Bank \
  && chmod -R ug+rwX /var/www/data
 
@@ -22,6 +22,7 @@ server {
     root /var/www;
     index index.php index.html index.htm;
     charset utf-8;
+    client_max_body_size 10m;
 
     location = /favicon.ico { access_log off; log_not_found off; }
     location = /robots.txt  { access_log off; log_not_found off; }
@@ -34,6 +35,11 @@ server {
         }
         default_type application/octet-stream;
         access_log off;
+    }
+
+    # block browsing /data JSON; voucher images are served via voucher_api.php
+    location ^~ /data/ {
+        deny all;
     }
 
     location ~ \.php$ {

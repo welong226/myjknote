@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>我的票券</title>
+<style>
+  :root {
+    --bg: #f5f5f5;
+    --card: #fff;
+    --text: #222;
+    --muted: #888;
+    --line: #ddd;
+    --link: #1a0dab;
+    --warn: #e65100;
+    --danger: #c62828;
+    --ok: #2e7d32;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; font-family: "Microsoft JhengHei", -apple-system, Arial, sans-serif;
+    background: var(--bg); color: var(--text); padding: 14px;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  .top {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 14px;
+  }
+  .top h1 { margin: 0; font-size: 22px; }
+  .top a.home { color: var(--link); text-decoration: none; font-size: 15px; }
+  .btn {
+    border: 1px solid #333; background: #fff; color: #222;
+    padding: 10px 14px; font-size: 15px; border-radius: 0; cursor: pointer;
+  }
+  .btn.primary { background: #333; color: #fff; border-color: #333; }
+  .btn.ghost { background: #fafafa; }
+  .btn.danger { border-color: var(--danger); color: var(--danger); }
+  .btn:disabled { opacity: .5; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0 0 12px; line-height: 1.4; }
+  .list { display: flex; flex-direction: column; gap: 10px; }
+  .item {
+    background: var(--card); border: 1px solid #aaa; display: flex; gap: 12px;
+    padding: 10px; cursor: pointer;
+  }
+  .item.used { opacity: .55; }
+  .item .thumb {
+    width: 72px; height: 72px; flex: 0 0 72px; background: #eee;
+    border: 1px solid var(--line); object-fit: cover; display: block;
+  }
+  .item .thumb.placeholder {
+    display: flex; align-items: center; justify-content: center;
+    color: #bbb; font-size: 12px;
+  }
+  .item .meta { flex: 1; min-width: 0; }
+  .item .title {
+    font-size: 16px; font-weight: 700; margin: 0 0 4px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .item .sub { font-size: 13px; color: #555; margin: 0 0 2px; }
+  .item .exp { font-size: 13px; font-weight: 700; }
+  .item .exp.soon { color: var(--warn); }
+  .item .exp.over { color: var(--danger); }
+  .item .exp.ok { color: var(--ok); }
+  .empty { text-align: center; color: var(--muted); padding: 40px 10px; border: 1px dashed #ccc; background: #fff; }
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.4);
+    display: none; align-items: flex-end; justify-content: center; z-index: 40;
+  }
+  .overlay.show { display: flex; }
+  .sheet {
+    background: #fff; width: 100%; max-width: 560px; max-height: 92vh;
+    overflow: auto; padding: 14px 14px 22px; border-top: 2px solid #333;
+  }
+  .sheet h2 { margin: 0 0 12px; font-size: 18px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 13px; color: #555; margin-bottom: 4px; }
+  .field input, .field select, .field textarea {
+    width: 100%; font-size: 16px; padding: 10px; border: 1px solid #aaa;
+    font-family: inherit; background: #fff;
+  }
+  .field textarea { min-height: 64px; resize: vertical; }
+  .preview {
+    width: 100%; max-height: 220px; object-fit: contain; background: #f0f0f0;
+    border: 1px solid #aaa; display: none; margin-top: 8px;
+  }
+  .preview.show { display: block; }
+  .row-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: #323232; color: #fff; padding: 10px 14px; font-size: 13px;
+    opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 99; white-space: nowrap;
+  }
+  .toast.show { opacity: 1; }
+  .viewer {
+    position: fixed; inset: 0; background: #111; display: none;
+    align-items: center; justify-content: center; z-index: 50; padding: 12px;
+  }
+  .viewer.show { display: flex; }
+  .viewer img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .viewer .close {
+    position: absolute; top: 12px; right: 12px; background: #fff; border: none;
+    padding: 8px 12px; font-size: 14px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>我的票券</h1>
+    <a class="home" href="index.html">← 首頁</a>
+  </div>
+  <p class="hint">上傳電子票券截圖，註記來源與到期日，避免忘了在哪個網站／App 買的。</p>
+  <div class="toolbar">
+    <button class="btn primary" id="addBtn">＋ 新增票券</button>
+    <button class="btn ghost" id="reloadBtn">重新載入</button>
+  </div>
+  <div class="list" id="list"></div>
+  <div class="empty" id="empty" style="display:none;">尚無票券，點「新增票券」開始</div>
+</div>
+
+<div class="overlay" id="formOverlay">
+  <div class="sheet">
+    <h2 id="formTitle">新增票券</h2>
+    <form id="form">
+      <input type="hidden" id="fId" value="">
+      <div class="field">
+        <label>截圖（可拍照或選相簿）</label>
+        <input type="file" id="fImage" accept="image/*">
+        <img class="preview" id="fPreview" alt="預覽">
+      </div>
+      <div class="field">
+        <label>標題</label>
+        <input type="text" id="fTitle" placeholder="例如：全家虛擬禮物卡 50 元" required>
+      </div>
+      <div class="field">
+        <label>來源網站／App</label>
+        <input type="text" id="fSource" placeholder="例如：享樂券、Edenred">
+      </div>
+      <div class="field">
+        <label>到期日</label>
+        <input type="date" id="fExpires">
+      </div>
+      <div class="field">
+        <label>狀態</label>
+        <select id="fStatus">
+          <option value="active">未使用</option>
+          <option value="used">已使用</option>
+          <option value="expired">已過期</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>備註</label>
+        <textarea id="fNote" placeholder="可填序號、使用方式等"></textarea>
+      </div>
+      <div class="row-btns">
+        <button type="submit" class="btn primary" id="saveBtn">儲存</button>
+        <button type="button" class="btn ghost" id="cancelBtn">取消</button>
+        <button type="button" class="btn danger" id="deleteBtn" style="display:none; margin-left:auto;">刪除</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="viewer" id="viewer">
+  <button class="close" id="viewerClose">關閉</button>
+  <img id="viewerImg" alt="票券截圖">
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  const API = 'voucher_api.php';
+  let items = [];
+  let pendingFile = null;
+  let toastTimer;
+
+  function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  function daysLeft(expires) {
+    if (!expires) return null;
+    const t = new Date(expires + 'T12:00:00');
+    if (isNaN(t.getTime())) return null;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((t - today) / 86400000);
+  }
+
+  function expLabel(expires, status) {
+    if (status === 'used') return { text: '已使用', cls: '' };
+    if (!expires) return { text: '未設定到期日', cls: '' };
+    const d = daysLeft(expires);
+    if (d === null) return { text: expires, cls: '' };
+    if (d < 0) return { text: expires + ' · 已過期 ' + (-d) + ' 天', cls: 'over' };
+    if (d === 0) return { text: expires + ' · 今天到期', cls: 'soon' };
+    if (d <= 30) return { text: expires + ' · 還有 ' + d + ' 天', cls: 'soon' };
+    return { text: expires + ' · 還有 ' + d + ' 天', cls: 'ok' };
+  }
+
+  function imgUrl(id) {
+    return API + '?action=img&id=' + encodeURIComponent(id) + '&t=' + Date.now();
+  }
+
+  async function load() {
+    try {
+      const r = await fetch(API + '?action=list', { cache: 'no-store' });
+      if (!r.ok) throw new Error('load failed');
+      items = await r.json();
+      if (!Array.isArray(items)) items = [];
+      render();
+    } catch (e) {
+      toast('⚠ 無法載入票券');
+      items = [];
+      render();
+    }
+  }
+
+  function render() {
+    const list = document.getElementById('list');
+    const empty = document.getElementById('empty');
+    list.innerHTML = '';
+    if (!items.length) {
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+    items.forEach(v => {
+      const el = document.createElement('div');
+      el.className = 'item' + (v.status === 'used' ? ' used' : '');
+      const exp = expLabel(v.expires, v.status);
+      let thumb;
+      if (v.hasImage) {
+        thumb = `<img class="thumb" src="${imgUrl(v.id)}" alt="">`;
+      } else {
+        thumb = `<div class="thumb placeholder">無圖</div>`;
+      }
+      el.innerHTML =
+        thumb +
+        `<div class="meta">
+          <div class="title"></div>
+          <div class="sub"></div>
+          <div class="exp ${exp.cls}"></div>
+        </div>`;
+      el.querySelector('.title').textContent = v.title || '未命名票券';
+      el.querySelector('.sub').textContent = v.source ? ('來源：' + v.source) : '來源：未填';
+      el.querySelector('.exp').textContent = exp.text;
+      el.onclick = () => openEdit(v);
+      const img = el.querySelector('img.thumb');
+      if (img) {
+        img.onclick = (e) => {
+          e.stopPropagation();
+          openViewer(v.id);
+        };
+      }
+      list.appendChild(el);
+    });
+  }
+
+  function openViewer(id) {
+    document.getElementById('viewerImg').src = imgUrl(id);
+    document.getElementById('viewer').classList.add('show');
+  }
+  document.getElementById('viewerClose').onclick = () => {
+    document.getElementById('viewer').classList.remove('show');
+    document.getElementById('viewerImg').src = '';
+  };
+  document.getElementById('viewer').onclick = (e) => {
+    if (e.target.id === 'viewer') document.getElementById('viewerClose').onclick();
+  };
+
+  function resetForm() {
+    pendingFile = null;
+    document.getElementById('fId').value = '';
+    document.getElementById('fTitle').value = '';
+    document.getElementById('fSource').value = '';
+    document.getElementById('fExpires').value = '';
+    document.getElementById('fStatus').value = 'active';
+    document.getElementById('fNote').value = '';
+    document.getElementById('fImage').value = '';
+    const p = document.getElementById('fPreview');
+    p.src = '';
+    p.classList.remove('show');
+    document.getElementById('deleteBtn').style.display = 'none';
+    document.getElementById('formTitle').textContent = '新增票券';
+  }
+
+  function openAdd() {
+    resetForm();
+    document.getElementById('formOverlay').classList.add('show');
+  }
+
+  function openEdit(v) {
+    resetForm();
+    document.getElementById('formTitle').textContent = '編輯票券';
+    document.getElementById('fId').value = v.id || '';
+    document.getElementById('fTitle').value = v.title || '';
+    document.getElementById('fSource').value = v.source || '';
+    document.getElementById('fExpires').value = v.expires || '';
+    document.getElementById('fStatus').value = v.status || 'active';
+    document.getElementById('fNote').value = v.note || '';
+    document.getElementById('deleteBtn').style.display = 'inline-block';
+    if (v.hasImage) {
+      const p = document.getElementById('fPreview');
+      p.src = imgUrl(v.id);
+      p.classList.add('show');
+    }
+    document.getElementById('formOverlay').classList.add('show');
+  }
+
+  document.getElementById('addBtn').onclick = openAdd;
+  document.getElementById('reloadBtn').onclick = load;
+  document.getElementById('cancelBtn').onclick = () => {
+    document.getElementById('formOverlay').classList.remove('show');
+  };
+  document.getElementById('formOverlay').onclick = (e) => {
+    if (e.target.id === 'formOverlay') {
+      document.getElementById('formOverlay').classList.remove('show');
+    }
+  };
+
+  document.getElementById('fImage').onchange = (e) => {
+    const f = e.target.files && e.target.files[0];
+    pendingFile = f || null;
+    const p = document.getElementById('fPreview');
+    if (!f) { p.classList.remove('show'); p.src = ''; return; }
+    const url = URL.createObjectURL(f);
+    p.src = url;
+    p.classList.add('show');
+  };
+
+  document.getElementById('form').onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = true;
+    try {
+      const fd = new FormData();
+      fd.append('action', 'upsert');
+      const id = document.getElementById('fId').value.trim();
+      if (id) fd.append('id', id);
+      fd.append('title', document.getElementById('fTitle').value.trim());
+      fd.append('source', document.getElementById('fSource').value.trim());
+      fd.append('expires', document.getElementById('fExpires').value);
+      fd.append('status', document.getElementById('fStatus').value);
+      fd.append('note', document.getElementById('fNote').value.trim());
+      if (pendingFile) fd.append('image', pendingFile);
+      const r = await fetch(API, { method: 'POST', body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || '儲存失敗');
+      document.getElementById('formOverlay').classList.remove('show');
+      toast('已儲存');
+      await load();
+    } catch (err) {
+      toast('⚠ ' + (err.message || '儲存失敗'));
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  document.getElementById('deleteBtn').onclick = async () => {
+    const id = document.getElementById('fId').value.trim();
+    if (!id) return;
+    if (!confirm('確定刪除此票券？截圖也會一併刪除。')) return;
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', id })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || '刪除失敗');
+      document.getElementById('formOverlay').classList.remove('show');
+      toast('已刪除');
+      await load();
+    } catch (err) {
+      toast('⚠ ' + (err.message || '刪除失敗'));
+    }
+  };
+
+  load();
+})();
+</script>
+</body>
+</html>
