@@ -16,5 +16,9 @@ if [ ! -f /var/www/data/.seeded ]; then
   chmod -R ug+rwX /var/www/data 2>/dev/null || true
 fi
 
+# Railway (and similar) inject PORT; default 8080 for local/Zeabur
+PORT="${PORT:-8080}"
+sed -i "s/listen [0-9]\\+/listen ${PORT}/" /etc/nginx/sites-enabled/default
+
 php-fpm -D
 exec nginx -g 'daemon off;'
