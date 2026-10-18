@@ -35,8 +35,13 @@ jobs:
             **/Dockerfile
             **/docker-entrypoint.sh
             **/.dockerignore
+            **/railway.toml
+            **/railway.json
+            **/.railway/**
             **/zbpack.json
             **/composer.json
             **/README.md
+            **/BACKUP.md
             **/BUILD_ID
             **/.DS_Store
+            **/.cursor/**

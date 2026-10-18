@@ -15,6 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 EXCLUDE_DIRS = {
     ".git",
     ".github",
+    ".railway",
+    ".cursor",
     "scripts",
     "__pycache__",
 }
@@ -25,9 +27,12 @@ EXCLUDE_FILES = {
     ".env.byethost.example",
     "Dockerfile",
     "docker-entrypoint.sh",
+    "railway.toml",
+    "railway.json",
     "zbpack.json",
     "composer.json",
     "README.md",
+    "BACKUP.md",
     "BUILD_ID",
 }
 

@@ -50,43 +50,50 @@ $method = strtoupper((string)($data['method'] ?? 'GET'));
 $headersIn = is_array($data['headers'] ?? null) ? $data['headers'] : [];
 $body = $data['body'] ?? null;
 
-$curlHeaders = [];
+$headerLines = [];
 foreach ($headersIn as $k => $v) {
     if (!is_string($k)) {
         continue;
     }
-    $curlHeaders[] = $k . ': ' . (string)$v;
+    $headerLines[] = $k . ': ' . (string)$v;
 }
 
-$ch = curl_init($url);
-curl_setopt_array($ch, [
-    CURLOPT_CUSTOMREQUEST => $method,
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HEADER => true,
-    CURLOPT_TIMEOUT => 90,
-    CURLOPT_FOLLOWLOCATION => false,
-    CURLOPT_HTTPHEADER => $curlHeaders,
-]);
+$opts = [
+    'http' => [
+        'method' => $method,
+        'header' => implode("\r\n", $headerLines),
+        'timeout' => 90,
+        'ignore_errors' => true,
+        'follow_location' => 0,
+    ],
+];
 if ($body !== null && $body !== '' && $method !== 'GET' && $method !== 'HEAD') {
-    curl_setopt($ch, CURLOPT_POSTFIELDS, is_string($body) ? $body : json_encode($body));
+    $opts['http']['content'] = is_string($body) ? $body : json_encode($body);
 }
 
-$resp = curl_exec($ch);
-if ($resp === false) {
+$ctx = stream_context_create($opts);
+$respBody = @file_get_contents($url, false, $ctx);
+if ($respBody === false) {
     http_response_code(502);
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['error' => curl_error($ch)]);
-    curl_close($ch);
+    $err = error_get_last();
+    echo json_encode(['error' => $err['message'] ?? 'upstream failed']);
     exit;
 }
 
-$headerSize = (int)curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-$status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$contentType = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
-$respBody = substr($resp, $headerSize);
-curl_close($ch);
+$status = 502;
+$contentType = '';
+if (isset($http_response_header) && is_array($http_response_header)) {
+    foreach ($http_response_header as $line) {
+        if (preg_match('#^HTTP/\S+\s+(\d+)#', $line, $m)) {
+            $status = (int)$m[1];
+        } elseif (stripos($line, 'Content-Type:') === 0) {
+            $contentType = trim(substr($line, strlen('Content-Type:')));
+        }
+    }
+}
 
-http_response_code($status > 0 ? $status : 502);
+http_response_code($status);
 if ($contentType !== '') {
     header('Content-Type: ' . $contentType);
 }

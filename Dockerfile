@@ -10,8 +10,9 @@ WORKDIR /var/www
 COPY --chown=www-data:www-data . /var/www
 
 # Ensure Bank gallery assets are present in the image
-RUN test -f /var/www/Bank/004.JPG \
- && test -f /var/www/BUILD_ID \
+RUN test -f /var/www/BUILD_ID \
+ && test -d /var/www/Bank \
+ && ls /var/www/Bank/* >/dev/null \
  && mkdir -p /var/www/data/shift_data /var/www/data/vouchers \
  && chown -R www-data:www-data /var/www/data /var/www/Bank \
  && chmod -R ug+rwX /var/www/data
