@@ -92,15 +92,15 @@
   .weekdays div.we { color: #c0a23b; }
   .grid { display: grid; grid-template-columns: repeat(7, 1fr); min-width: 0; }
   .cell {
-    height: 78px; display: flex; flex-direction: column; align-items: center;
+    height: 86px; display: flex; flex-direction: column; align-items: center;
     position: relative; border-right: 1px solid #f0f3f8; border-bottom: 1px solid #f0f3f8;
     cursor: pointer; background: var(--card); padding: 3px 1px 2px; min-width: 0;
   }
   .cell:nth-child(7n) { border-right: none; }
-  .cell .num { font-size: 15px; font-weight: 500; color: var(--text); line-height: 1; }
+  .cell .num { font-size: 17px; font-weight: 500; color: var(--text); line-height: 1; }
   /* 班別區：固定高度，有無班別都佔同樣空間 */
   .cell .shift {
-    margin-top: 3px; height: 18px; font-size: 17px; padding: 0; width: 22px;
+    margin-top: 3px; height: 26px; font-size: 24px; padding: 0; width: 28px;
     display: flex; align-items: center; justify-content: center;
     border-radius: 6px; font-weight: 700; line-height: 1;
     background: transparent; /* 班別不加底色，僅保留文字顏色 */
@@ -108,8 +108,8 @@
   .cell .shift.empty { visibility: hidden; }
   /* 記事區：固定兩倍高度（約兩行），允許換行，不撐高格子；空時也佔位 */
   .cell .note {
-    margin-top: 2px; height: 30px; width: 96%; max-width: 96%; min-width: 0;
-    font-size: 9px; padding: 2px 4px; border-radius: 5px;
+    margin-top: 2px; height: 32px; width: 96%; max-width: 96%; min-width: 0;
+    font-size: 11px; padding: 2px 4px; border-radius: 5px;
     background: transparent; color: #1c6fd6; /* 記事去底色 */
     display: flex; align-items: center; justify-content: center; text-align: center;
     overflow: hidden; white-space: normal; word-break: break-word; line-height: 1.2;
@@ -130,9 +130,10 @@
       linear-gradient(90deg, #ffffff55 1px, transparent 1px);
     background-size: 10px 10px; pointer-events: none;
   }
+  /* 當天：沿用格子框線即可，不再在日期上加紅圈 */
   .cell.today .num {
-    color: #fff; background: var(--today); width: 20px; height: 20px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px;
+    font-weight: 700;
+    color: var(--text);
   }
   .cell.selected { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
   .spacer { flex: 1; }
@@ -421,10 +422,11 @@
         num.className = 'num'; num.textContent = c.d;
         div.appendChild(num);
         const e = entryOf(k);
-        // 班別區：永遠建立，沒班別就留空（預留空間讓對齊一致）
+        // 班別區：永遠建立；無班別或休假皆留白（不顯示「休」）
         const s = document.createElement('div');
-        s.className = 'shift' + (e.shift && SHIFT_TYPES[e.shift] ? ' ' + SHIFT_TYPES[e.shift].cls : ' empty');
-        if (e.shift && SHIFT_TYPES[e.shift]) s.textContent = SHIFT_TYPES[e.shift].label;
+        const showShift = e.shift && e.shift !== 'off' && SHIFT_TYPES[e.shift];
+        s.className = 'shift' + (showShift ? ' ' + SHIFT_TYPES[e.shift].cls : ' empty');
+        if (showShift) s.textContent = SHIFT_TYPES[e.shift].label;
         div.appendChild(s);
         // 記事區：永遠建立，沒記事就留空
         const nt = document.createElement('div');
