@@ -43,6 +43,22 @@ server {
         deny all;
     }
 
+    location ^~ /scripts/ { deny all; }
+    location ^~ /seed/ { deny all; }
+    location ^~ /.github/ { deny all; }
+    location ^~ /.cursor/ { deny all; }
+
+    location = /auth_lib.php { deny all; }
+    location = /Dockerfile { deny all; }
+    location = /docker-entrypoint.sh { deny all; }
+    location = /composer.json { deny all; }
+    location = /railway.toml { deny all; }
+    location = /zbpack.json { deny all; }
+    location = /BACKUP.md { deny all; }
+    location = /README.md { deny all; }
+    location = /PASSWORDS.md { deny all; }
+    location ~* \.(md|toml|yml|yaml)$ { deny all; }
+
     location ~ \.php$ {
         try_files $uri =404;
         fastcgi_split_path_info ^(.+\.php)(/.*)$;

@@ -42,6 +42,9 @@ jobs:
             **/composer.json
             **/README.md
             **/BACKUP.md
+            **/PASSWORDS.md
             **/BUILD_ID
+            **/data/keys.php
+            **/data/keys.example.php
             **/.DS_Store
             **/.cursor/**

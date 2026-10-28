@@ -2,13 +2,10 @@
 """
 Export / import myjknote runtime data (班表 / BankUsage / JCBcount / 票券).
 
-  # Railway → 本機 data/
+Needs MYJK_SHIFT_KEY / MYJK_PERSONAL_KEY from env or .env.myjk — see PASSWORDS.md.
+
   python3 scripts/sync_data.py export
-
-  # 本機 data/ → Railway（還原／覆寫線上）
   python3 scripts/sync_data.py import
-
-  # Railway → 本機 data/ → byethost FTP（需 .env.byethost）
   python3 scripts/sync_data.py backup-byethost
 """
 
@@ -16,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import urllib.error
@@ -29,10 +27,43 @@ DATA = ROOT / "data"
 SEED = ROOT / "seed"
 DEFAULT_BASE = "https://myjk.up.railway.app"
 
+_KEYS: dict[str, str] = {"shift": "", "personal": ""}
 
-def http_json(method: str, url: str, body: object | None = None):
+
+def load_keys() -> None:
+    env_file = ROOT / ".env.myjk"
+    if env_file.is_file():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k, v = k.strip(), v.strip().strip("'").strip('"')
+            if k == "MYJK_SHIFT_KEY":
+                _KEYS["shift"] = v
+            elif k == "MYJK_PERSONAL_KEY":
+                _KEYS["personal"] = v
+    if os.environ.get("MYJK_SHIFT_KEY"):
+        _KEYS["shift"] = os.environ["MYJK_SHIFT_KEY"]
+    if os.environ.get("MYJK_PERSONAL_KEY"):
+        _KEYS["personal"] = os.environ["MYJK_PERSONAL_KEY"]
+
+
+def http_json(
+    method: str,
+    url: str,
+    body: object | None = None,
+    *,
+    key_kind: str,
+):
+    key = _KEYS.get(key_kind) or ""
+    if not key:
+        raise RuntimeError(
+            f"Missing {key_kind} key. Set MYJK_SHIFT_KEY / MYJK_PERSONAL_KEY "
+            f"or create .env.myjk (see PASSWORDS.md)."
+        )
     data = None
-    headers = {"Accept": "application/json"}
+    headers = {"Accept": "application/json", "X-Myjk-Key": key}
     if body is not None:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json"
@@ -42,8 +73,11 @@ def http_json(method: str, url: str, body: object | None = None):
         return json.loads(raw) if raw else None
 
 
-def http_bytes(url: str) -> bytes:
-    req = urllib.request.Request(url, headers={"Accept": "*/*"})
+def http_bytes(url: str, *, key_kind: str) -> bytes:
+    key = _KEYS.get(key_kind) or ""
+    req = urllib.request.Request(
+        url, headers={"Accept": "*/*", "X-Myjk-Key": key}
+    )
     with urllib.request.urlopen(req, timeout=120) as resp:
         return resp.read()
 
@@ -82,7 +116,9 @@ def export_vouchers(base: str) -> int:
     """Download voucher metadata + images into data/."""
     base = base.rstrip("/")
     try:
-        items = http_json("GET", f"{base}/voucher_api.php?action=list")
+        items = http_json(
+            "GET", f"{base}/voucher_api.php?action=list", key_kind="personal"
+        )
     except urllib.error.HTTPError as e:
         print(f"  vouchers: skip (HTTP {e.code})")
         return 0
@@ -100,15 +136,16 @@ def export_vouchers(base: str) -> int:
         vid = item.get("id")
         if not vid:
             continue
-        # Prefer stored filename extension when present
         ext = "jpg"
         fn = item.get("file") or item.get("image") or ""
         if isinstance(fn, str) and "." in fn:
             ext = fn.rsplit(".", 1)[-1].lower() or "jpg"
         out = img_dir / f"{vid}.{ext}"
-        url = f"{base}/voucher_api.php?action=img&id={urllib.parse.quote(str(vid))}"
+        url = (
+            f"{base}/voucher_api.php?action=img&id={urllib.parse.quote(str(vid))}"
+        )
         try:
-            out.write_bytes(http_bytes(url))
+            out.write_bytes(http_bytes(url, key_kind="personal"))
             n_img += 1
         except urllib.error.HTTPError as e:
             print(f"  voucher img {vid}: HTTP {e.code}")
@@ -122,8 +159,8 @@ def cmd_export(base: str, also_seed: bool) -> int:
     base = base.rstrip("/")
     print(f"Export from {base}")
 
-    cards = http_json("GET", f"{base}/card_api.php")
-    banks = http_json("GET", f"{base}/bank_api.php")
+    cards = http_json("GET", f"{base}/card_api.php", key_kind="personal")
+    banks = http_json("GET", f"{base}/bank_api.php", key_kind="personal")
     write_json(DATA / "cards_data.json", cards)
     write_json(DATA / "banks_quota.json", banks)
     print(f"  cards: {len(cards) if isinstance(cards, list) else '?'} items")
@@ -132,7 +169,9 @@ def cmd_export(base: str, also_seed: bool) -> int:
     n = 0
     for ym in month_list():
         try:
-            month = http_json("GET", f"{base}/api.php?ym={ym}")
+            month = http_json(
+                "GET", f"{base}/api.php?ym={ym}", key_kind="shift"
+            )
         except urllib.error.HTTPError as e:
             print(f"  skip {ym}: HTTP {e.code}")
             continue
@@ -153,7 +192,10 @@ def cmd_export(base: str, also_seed: bool) -> int:
             if src.is_file():
                 write_json(SEED / name, json.loads(src.read_text(encoding="utf-8")))
         for f in (DATA / "shift_data").glob("*.json"):
-            write_json(SEED / "shift_data" / f.name, json.loads(f.read_text(encoding="utf-8")))
+            write_json(
+                SEED / "shift_data" / f.name,
+                json.loads(f.read_text(encoding="utf-8")),
+            )
         print("  also copied → seed/")
 
     print(f"Done. Wrote data/ ({n} month files).")
@@ -166,13 +208,19 @@ def cmd_import(base: str) -> int:
 
     cards = json.loads((DATA / "cards_data.json").read_text(encoding="utf-8"))
     banks = json.loads((DATA / "banks_quota.json").read_text(encoding="utf-8"))
-    print(f"  cards: {http_json('POST', f'{base}/card_api.php', cards)}")
-    print(f"  banks: {http_json('POST', f'{base}/bank_api.php', banks)}")
+    print(
+        f"  cards: {http_json('POST', f'{base}/card_api.php', cards, key_kind='personal')}"
+    )
+    print(
+        f"  banks: {http_json('POST', f'{base}/bank_api.php', banks, key_kind='personal')}"
+    )
 
     for f in sorted((DATA / "shift_data").glob("????-??.json")):
         ym = f.stem
         body = json.loads(f.read_text(encoding="utf-8"))
-        print(f"  shift {ym}: {http_json('POST', f'{base}/api.php?ym={ym}', body)}")
+        print(
+            f"  shift {ym}: {http_json('POST', f'{base}/api.php?ym={ym}', body, key_kind='shift')}"
+        )
 
     vouchers_meta = DATA / "vouchers.json"
     if vouchers_meta.is_file():
@@ -194,6 +242,7 @@ def cmd_backup_byethost(base: str, also_seed: bool) -> int:
 
 
 def main() -> int:
+    load_keys()
     p = argparse.ArgumentParser(description="Sync myjknote runtime JSON data")
     p.add_argument(
         "command",
@@ -220,6 +269,9 @@ def main() -> int:
         return 1
     except FileNotFoundError as e:
         print(f"Missing file: {e}", file=sys.stderr)
+        return 1
+    except RuntimeError as e:
+        print(str(e), file=sys.stderr)
         return 1
     return 1
 

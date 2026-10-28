@@ -4,5 +4,8 @@
 *.bk
 *.tmp
 data/**/*.tmp
+data/keys.php
 .env.byethost
 .env*.local
+.env.myjk
+

@@ -93,14 +93,20 @@
     </div>
 </div>
 
+<script src="myjk-auth.js"></script>
 <script>
     let banks = [];
     let currentEditId = null;
     const API_URL = 'bank_api.php';
+    const apiFetch = (url, opts) => MyjkAuth.fetch('personal', url, opts);
 
     async function loadData() {
         try {
-            const res = await fetch(API_URL);
+            const res = await apiFetch(API_URL);
+            if (res.status === 401) {
+                alert('票券／銀行／卡片密碼錯誤或未輸入');
+                return;
+            }
             banks = await res.json();
             render();
         } catch (e) {
@@ -110,11 +116,12 @@
 
     async function sync() {
         try {
-            await fetch(API_URL, {
+            const r = await apiFetch(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(banks)
             });
+            if (r.status === 401) alert('密碼錯誤，無法同步到伺服器');
         } catch (e) {
             console.error("Sync failed", e);
         }

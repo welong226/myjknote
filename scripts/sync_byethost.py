@@ -33,7 +33,10 @@ EXCLUDE_FILES = {
     "composer.json",
     "README.md",
     "BACKUP.md",
+    "PASSWORDS.md",
     "BUILD_ID",
+    "keys.php",
+    "keys.example.php",
 }
 
 

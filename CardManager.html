@@ -74,19 +74,25 @@
     <div id="empty-tip">目前沒有卡片，請點擊新增</div>
 </div>
 
+<script src="myjk-auth.js"></script>
 <script>
     let cards = [];
     const API_URL = 'card_api.php';
+    const apiFetch = (url, opts) => MyjkAuth.fetch('personal', url, opts);
 
     async function loadData() {
         try {
-            const response = await fetch(API_URL);
+            const response = await apiFetch(API_URL);
+            if (response.status === 401) throw new Error('unauthorized');
             cards = await response.json();
             render();
         } catch (e) {
             console.error("Failed to load data from server, falling back to local storage", e);
             cards = JSON.parse(localStorage.getItem('managed_cards') || '[]');
             render();
+            if (e && e.message === 'unauthorized') {
+                alert('票券／銀行／卡片密碼錯誤或未輸入');
+            }
         }
     }
 
@@ -96,11 +102,12 @@
         
         // Save to Server
         try {
-            await fetch(API_URL, {
+            const r = await apiFetch(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(cards)
             });
+            if (r.status === 401) alert('密碼錯誤，無法同步到伺服器');
         } catch (e) {
             console.error("Failed to sync with server", e);
         }

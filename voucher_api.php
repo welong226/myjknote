@@ -10,6 +10,9 @@
 
 header('Cache-Control: no-store');
 
+require_once __DIR__ . '/auth_lib.php';
+myjk_require_key('personal');
+
 $dataDir = __DIR__ . '/data';
 $imgDir  = $dataDir . '/vouchers';
 $metaFile = $dataDir . '/vouchers.json';

@@ -11,6 +11,9 @@
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
+require_once __DIR__ . '/auth_lib.php';
+myjk_require_key('shift');
+
 $dataDir = __DIR__ . '/data/shift_data';
 $legacyFile = __DIR__ . '/data/shift_data.json';
 

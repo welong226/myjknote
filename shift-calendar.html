@@ -289,10 +289,12 @@
 </div>
 <div class="toast" id="toast"></div>
 
+<script src="myjk-auth.js"></script>
 <script>
 (function(){
   // ★ 後端 API 路徑：PHP 部署用 '/api.php'（byethost 等 PHP 主機）；本機 Python 測試才用 '/api/data'
   const API = '/api.php';
+  const apiFetch = (url, opts) => MyjkAuth.fetch('shift', url, opts);
   const SHIFT_TYPES = {
     s1:    { label: '一', cls: 's1',    name: '一班' },
     s2:    { label: '二', cls: 's2',    name: '二班' },
@@ -324,7 +326,8 @@
 
   async function loadMonth(ym){
     try {
-      const r = await fetch(`${API}?ym=${encodeURIComponent(ym)}`, { cache: 'no-store' });
+      const r = await apiFetch(`${API}?ym=${encodeURIComponent(ym)}`, { cache: 'no-store' });
+      if (r.status === 401) throw new Error('密碼錯誤');
       if (!r.ok) throw new Error('bad');
       const monthData = await r.json();
       // 清掉該月舊快取再合併
@@ -334,7 +337,7 @@
     } catch(e){
       Object.keys(data).forEach(k => { if (k.startsWith(ym)) delete data[k]; });
       loadedYm.add(ym);
-      toast('⚠ 無法連線到伺服器，顯示為空白');
+      toast(e && e.message === '密碼錯誤' ? '⚠ 班表密碼錯誤或未輸入' : '⚠ 無法連線到伺服器，顯示為空白');
     }
   }
   async function ensureViewMonth(){
@@ -346,15 +349,16 @@
     const payload = {};
     Object.keys(data).forEach(k => { if (k.startsWith(ym)) payload[k] = data[k]; });
     try {
-      const r = await fetch(`${API}?ym=${encodeURIComponent(ym)}`, {
+      const r = await apiFetch(`${API}?ym=${encodeURIComponent(ym)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      if (r.status === 401) throw new Error('密碼錯誤');
       if (!r.ok) throw new Error('bad');
       loadedYm.add(ym);
     } catch(e){
-      toast('⚠ 儲存失敗，請檢查網路');
+      toast(e && e.message === '密碼錯誤' ? '⚠ 班表密碼錯誤' : '⚠ 儲存失敗，請檢查網路');
     }
   }
 
@@ -1093,11 +1097,12 @@
         Object.keys(data).forEach(k => { if (k.startsWith(ymInfo.ym)) delete data[k]; });
         Object.assign(data, payload);
         loadedYm.add(ymInfo.ym);
-        const r = await fetch(`${API}?ym=${encodeURIComponent(ymInfo.ym)}`, {
+        const r = await apiFetch(`${API}?ym=${encodeURIComponent(ymInfo.ym)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
+        if (r.status === 401) throw new Error('班表密碼錯誤');
         if (!r.ok) throw new Error('儲存失敗（API ' + r.status + '）');
         view = new Date(ymInfo.y, ymInfo.m, 1);
         importOverlay.classList.remove('show');
@@ -1125,11 +1130,13 @@
           Object.keys(data).forEach(k => { if (k.startsWith(ym)) delete data[k]; });
           Object.assign(data, byYm[ym]);
           loadedYm.add(ym);
-          await fetch(`${API}?ym=${encodeURIComponent(ym)}`, {
+          const rr = await apiFetch(`${API}?ym=${encodeURIComponent(ym)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(byYm[ym])
           });
+          if (rr.status === 401) throw new Error('班表密碼錯誤');
+          if (!rr.ok) throw new Error('儲存失敗');
         }
         await ensureViewMonth();
         render();

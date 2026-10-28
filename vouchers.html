@@ -168,9 +168,11 @@
 </div>
 <div class="toast" id="toast"></div>
 
+<script src="myjk-auth.js"></script>
 <script>
 (function () {
   const API = 'voucher_api.php';
+  const apiFetch = (url, opts) => MyjkAuth.fetch('personal', url, opts);
   let items = [];
   let pendingFile = null;
   let toastTimer;
@@ -204,18 +206,20 @@
   }
 
   function imgUrl(id) {
-    return API + '?action=img&id=' + encodeURIComponent(id) + '&t=' + Date.now();
+    const q = MyjkAuth.keyQuery('personal');
+    return API + '?action=img&id=' + encodeURIComponent(id) + '&t=' + Date.now() + (q ? '&' + q : '');
   }
 
   async function load() {
     try {
-      const r = await fetch(API + '?action=list', { cache: 'no-store' });
+      const r = await apiFetch(API + '?action=list', { cache: 'no-store' });
+      if (r.status === 401) throw new Error('密碼錯誤');
       if (!r.ok) throw new Error('load failed');
       items = await r.json();
       if (!Array.isArray(items)) items = [];
       render();
     } catch (e) {
-      toast('⚠ 無法載入票券');
+      toast(e && e.message === '密碼錯誤' ? '⚠ 票券密碼錯誤或未輸入' : '⚠ 無法載入票券');
       items = [];
       render();
     }
@@ -349,8 +353,9 @@
       fd.append('status', document.getElementById('fStatus').value);
       fd.append('note', document.getElementById('fNote').value.trim());
       if (pendingFile) fd.append('image', pendingFile);
-      const r = await fetch(API, { method: 'POST', body: fd });
+      const r = await apiFetch(API, { method: 'POST', body: fd });
       const j = await r.json().catch(() => ({}));
+      if (r.status === 401) throw new Error('密碼錯誤');
       if (!r.ok) throw new Error(j.error || '儲存失敗');
       document.getElementById('formOverlay').classList.remove('show');
       toast('已儲存');
@@ -367,12 +372,13 @@
     if (!id) return;
     if (!confirm('確定刪除此票券？截圖也會一併刪除。')) return;
     try {
-      const r = await fetch(API, {
+      const r = await apiFetch(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'delete', id })
       });
       const j = await r.json().catch(() => ({}));
+      if (r.status === 401) throw new Error('密碼錯誤');
       if (!r.ok) throw new Error(j.error || '刪除失敗');
       document.getElementById('formOverlay').classList.remove('show');
       toast('已刪除');
